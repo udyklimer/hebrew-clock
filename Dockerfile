@@ -7,25 +7,31 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Install all required system dependencies and development libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl libraqm0 \
+    curl \
+    libraqm0 \
+    libraqm-dev \
+    libfreetype6-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --only-binary=:all: \
-        --index-url https://pypi.org/simple \
-        -r requirements.txt \
- && python -c "from PIL import features; assert features.check('raqm'), 'raqm missing!'"
-# build libs only needed to compile Pillow with raqm on armv7
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential libraqm-dev libfreetype6-dev libjpeg-dev zlib1g-dev \
- && pip install --no-cache-dir -r requirements.txt \
- && apt-get purge -y build-essential libraqm-dev libfreetype6-dev libjpeg-dev zlib1g-dev \
- && apt-get autoremove -y \
- && rm -rf /var/lib/apt/lists/*
+
+# Install requirements and build Pillow with guaranteed raqm support
+RUN pip install --no-cache-dir --no-binary=Pillow -r requirements.txt \
+    && python -c "from PIL import features; assert features.check('raqm'), 'raqm missing!'"
+
+# Remove build tools to minimize image size
+RUN apt-get purge -y build-essential libraqm-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev libjpeg-dev zlib1g-dev \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY app/ /app/app/
-# Font files and sleeping.png must be present at /app/ (FONT_DIR default)
 COPY *.ttf sleeping.png* /app/
 
 RUN useradd --create-home --uid 10001 appuser \
