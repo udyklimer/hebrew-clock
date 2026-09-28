@@ -7,28 +7,32 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install required runtime system dependencies (including libjpeg62-turbo) and build-time packages
+# 1. Install both runtime and build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    libraqm0 \
     libjpeg62-turbo \
-    libraqm-dev \
+    libfreetype6 \
+    libharfbuzz0b \
+    libfribidi0 \
+    libraqm0 \
+    libjpeg-dev \
     libfreetype6-dev \
     libharfbuzz-dev \
     libfribidi-dev \
-    libjpeg-dev \
+    libraqm-dev \
     zlib1g-dev \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-# Install requirements and compile Pillow with raqm support
+# 2. Install Python packages & build Pillow from source with Raqm support
 RUN pip install --no-cache-dir --no-binary=Pillow -r requirements.txt \
     && python -c "from PIL import features; assert features.check('raqm'), 'raqm missing!'"
 
-# Remove build-only tools while preserving runtime libraries
-RUN apt-get purge -y build-essential libraqm-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev libjpeg-dev zlib1g-dev \
+# 3. Purge build tools & explicitly mark runtime packages as manually installed so autoremove won't delete them
+RUN apt-get markmanual libjpeg62-turbo libfreetype6 libharfbuzz0b libfribidi0 libraqm0 \
+    && apt-get purge -y build-essential libjpeg-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev libraqm-dev zlib1g-dev \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
