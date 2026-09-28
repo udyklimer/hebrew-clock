@@ -31,11 +31,12 @@ RUN pip install --no-cache-dir --no-binary=Pillow -r requirements.txt \
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
 WORKDIR /app
 
-# התקנת כל ספריות ה-Dynamic Linker הנדרשות בזמן הרצה
+# התקנת ספריות הרצה במערכת
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libjpeg62-turbo \
@@ -45,12 +46,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libraqm0 \
     && rm -rf /var/lib/apt/lists/*
 
-# העתקת החבילות
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-
-# יצירת הקישור הנדרש עבור Pillow
-RUN ldconfig
 
 COPY app/ /app/app/
 COPY *.ttf sleeping.png* /app/
