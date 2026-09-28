@@ -10,7 +10,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# התקנת כל התלויות הנדרשות לבניית Pillow מ-Source
+# התקנת התלויות הנדרשות לקומפילציה בלבד
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libjpeg-dev \
@@ -23,12 +23,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# התקנת החבילות לתיקיית wheel/target או התקנה רגילה
+# בניית Pillow והתקנת החבילות
 RUN pip install --no-cache-dir --no-binary=Pillow -r requirements.txt \
     && python -c "from PIL import features; assert features.check('raqm'), 'raqm missing!'"
 
 # ==========================================
-# Stage 2: Runtime Stage (האימג' הסופי)
+# Stage 2: Runtime Stage
 # ==========================================
 FROM python:3.12-slim
 
@@ -37,7 +37,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# התקנת ספריות ה-Runtime בלבד (Shared Objects)
+# התקנת ספריות הרצה בלבד (Runtime Libraries)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libjpeg62-turbo \
@@ -47,7 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libraqm0 \
     && rm -rf /var/lib/apt/lists/*
 
-# העתקת כל החבילות שהותקנו בשלב ה-builder
+# העתקת התלויות שהותקנו בשלב ה-builder
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
