@@ -39,7 +39,7 @@ jobs:
           push: true
           build-args: |
             VERSION=${{ github.event.inputs.tag }}
-          labels: org.opencontainers.image.source=https://github.com/t0mer/hebrew-clock
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           tags: |
-            ghcr.io/t0mer/hebrew-clock:${{ github.event.inputs.tag }}
-            ghcr.io/t0mer/hebrew-clock:latest
+            ghcr.io/${{ github.repository_owner }}/hebrew-clock:${{ github.event.inputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/hebrew-clock:latest
