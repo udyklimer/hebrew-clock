@@ -10,7 +10,6 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# התקנת התלויות הנדרשות לקומפילציה בלבד
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libjpeg-dev \
@@ -23,7 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# בניית Pillow והתקנת החבילות
 RUN pip install --no-cache-dir --no-binary=Pillow -r requirements.txt \
     && python -c "from PIL import features; assert features.check('raqm'), 'raqm missing!'"
 
@@ -37,7 +35,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# התקנת ספריות הרצה בלבד (Runtime Libraries)
+# התקנת כל ספריות ה-Dynamic Linker הנדרשות בזמן הרצה
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libjpeg62-turbo \
@@ -47,9 +45,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libraqm0 \
     && rm -rf /var/lib/apt/lists/*
 
-# העתקת התלויות שהותקנו בשלב ה-builder
+# העתקת החבילות
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+
+# יצירת הקישור הנדרש עבור Pillow
+RUN ldconfig
 
 COPY app/ /app/app/
 COPY *.ttf sleeping.png* /app/
