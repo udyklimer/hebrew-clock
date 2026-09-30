@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-requirements.txt .
+COPY requirements.txt .
 
 RUN pip install --no-cache-dir --no-binary=Pillow -r requirements.txt \
     && python -c "from PIL import features; assert features.check('raqm'), 'raqm missing!'"
