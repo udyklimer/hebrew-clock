@@ -10,11 +10,22 @@ from loguru import logger
 
 from app.core.config import settings
 
-VALID_FONTS = {
-    "DavidLibre-Bold", "FrankRuhlLibre-Bold", "FrankRuhlLibre",
-    "Heebo-Bold", "NotoSansHebrew-Bold",
-}
-DEFAULT_FONT = "NotoSansHebrew-Bold"
+# BASE_DIR moves up from app/services/clock.py to the root project directory
+BASE_DIR = Path(__file__).parent.parent.parent
+
+# Display dimensions
+EPD_WIDTH = 800
+EPD_HEIGHT = 480
+
+# Dynamic font loading from root directory
+FONTS_DIR = BASE_DIR / "fonts"
+VALID_FONTS = {f.stem for f in FONTS_DIR.glob("*.ttf")}
+
+# Fallback font list if no TTF files are found
+if not VALID_FONTS:
+    VALID_FONTS = {"DavidLibre-Bold", "FrankRuhlLibre-Bold", "FrankRuhlLibre", "Heebo-Bold", "NotoSansHebrew-Bold"}
+
+DEFAULT_FONT = "DavidLibre-Bold"
 
 # ── Hebrew time tables ────────────────────────────────
 
@@ -64,21 +75,24 @@ DAYS_HE = [
 # ── Helpers ───────────────────────────────────────────
 
 def get_israel_time() -> datetime.datetime:
+    """Calculates Israel local time with display lag offset."""
     utc = datetime.datetime.utcnow()
     local = utc + datetime.timedelta(hours=3 if 3 <= utc.month <= 10 else 2)
     return local + datetime.timedelta(seconds=settings.display_lag)
 
 
 def get_font(size: int, font_name: str = DEFAULT_FONT) -> ImageFont.FreeTypeFont:
+    """Loads specified TTF font with fallback options."""
     name = font_name if font_name in VALID_FONTS else DEFAULT_FONT
-    path = settings.font_dir / f"{name}.ttf"
+    path = FONTS_DIR / f"{name}.ttf"
     if path.exists():
         try:
             return ImageFont.truetype(str(path), size)
-        except Exception:
-            pass
-    for fallback in ("NotoSansHebrew-Bold", "FrankRuhlLibre"):
-        fb = settings.font_dir / f"{fallback}.ttf"
+        except Exception as exc:
+            logger.warning("Failed to load font {}: {}", path, exc)
+            
+    for fallback in ("DavidLibre-Bold", "NotoSansHebrew-Bold", "FrankRuhlLibre"):
+        fb = FONTS_DIR / f"{fallback}.ttf"
         if fb.exists():
             try:
                 return ImageFont.truetype(str(fb), size)
@@ -88,6 +102,7 @@ def get_font(size: int, font_name: str = DEFAULT_FONT) -> ImageFont.FreeTypeFont
 
 
 def _png_bytes(img: Image.Image) -> bytes:
+    """Converts PIL Image to 1-bit PNG byte buffer."""
     buf = io.BytesIO()
     img.convert("1", dither=Image.Dither.NONE).save(buf, format="PNG", optimize=True)
     buf.seek(0)
@@ -95,6 +110,7 @@ def _png_bytes(img: Image.Image) -> bytes:
 
 
 def _get_time_period(h: int) -> str:
+    """Returns Hebrew period phrase for given hour."""
     if 6  <= h < 12: return "בַּבֹּקֶר"
     if 12 <= h < 16: return "בַּצָּהֳרַיִם"
     if 16 <= h < 18: return "אַחַר הַצָּהֳרַיִם"
@@ -105,6 +121,7 @@ def _get_time_period(h: int) -> str:
 
 
 def _get_time_lines(h24: int, m: int) -> list[str]:
+    """Generates time strings in Hebrew words."""
     h12 = h24 % 12 or 12
     period = _get_time_period(h24)
     mp = MINUTE_PREFIX[m]
@@ -117,6 +134,7 @@ def _get_time_lines(h24: int, m: int) -> list[str]:
 
 def _draw_weather_icon(draw: ImageDraw.Draw, cx: int, cy: int,
                        icon_key: str, size: int = 38) -> None:
+    """Draws vector weather icons on the canvas."""
     s = size
 
     def cloud(ox: int = 0, oy: int = 0, scale: float = 1.0) -> None:
@@ -177,6 +195,7 @@ def _draw_weather_icon(draw: ImageDraw.Draw, cx: int, cy: int,
 
 def _draw_analog_clock(draw: ImageDraw.Draw, cx: int, cy: int, r: int,
                        h24: int, m: int, font_name: str) -> None:
+    """Draws small analog clock face at the top center."""
     draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=0, width=3)
     for i in range(12):
         angle = math.radians(i * 30 - 90)
@@ -205,7 +224,8 @@ def _draw_analog_clock(draw: ImageDraw.Draw, cx: int, cy: int, r: int,
 # ── Image generators ──────────────────────────────────
 
 def _generate_night_image(font_name: str) -> bytes:
-    W, H = 800, 480
+    """Generates night screen layout when sleep_time is True."""
+    W, H = EPD_WIDTH, EPD_HEIGHT
     img = Image.new("L", (W, H), color=0)
     draw = ImageDraw.Draw(img)
 
@@ -243,27 +263,13 @@ def _generate_night_image(font_name: str) -> bytes:
     return _png_bytes(img)
 
 
-def _generate_quiet_image(font_name: str) -> bytes:
-    W, H = 800, 480
-    img = Image.new("L", (W, H), color=255)
-    draw = ImageDraw.Draw(img)
-    PAD1, PAD2 = 8, 16
-    draw.rectangle([PAD1, PAD1, W - PAD1, H - PAD1], outline=0, width=3)
-    draw.rectangle([PAD2, PAD2, W - PAD2, H - PAD2], outline=0, width=1)
-    draw.text((W // 2, H // 2 - 50), "לֹא לְהָעִיר אַף אֶחָד!",
-              font=get_font(72, font_name), fill=0, anchor="mm")
-    draw.text((W // 2 - 60, H // 2 + 30), "z", font=get_font(72, font_name), fill=0, anchor="mm")
-    draw.text((W // 2,      H // 2 + 20), "z", font=get_font(55, font_name), fill=0, anchor="mm")
-    draw.text((W // 2 + 50, H // 2 + 10), "z", font=get_font(38, font_name), fill=0, anchor="mm")
-    return _png_bytes(img)
-
-
 def generate_clock_image(
     font_name:   str        = DEFAULT_FONT,
     sleep_time:  bool       = False,
     weather:     dict | None = None,
     jewish_date: str | None  = None,
 ) -> bytes:
+    """Generates full Hebrew clock screen image."""
     fn = font_name if font_name in VALID_FONTS else DEFAULT_FONT
 
     if sleep_time:
@@ -272,10 +278,7 @@ def generate_clock_image(
     now  = get_israel_time()
     h24, m = now.hour, now.minute
 
-    if h24 == 6 or (h24 == 7 and m < 30):
-        return _generate_quiet_image(fn)
-
-    W, H = 800, 480
+    W, H = EPD_WIDTH, EPD_HEIGHT
     img  = Image.new("L", (W, H), color=255)
     draw = ImageDraw.Draw(img)
 
@@ -288,7 +291,6 @@ def generate_clock_image(
     period_line = next((l for l in lines if l in PERIOD_WORDS), "")
 
     font_large  = get_font(100, fn)
-    font_medium = get_font(58,  fn)
     font_small  = get_font(34,  fn)
 
     clock_cx, clock_cy, clock_r = W // 2, PAD2 + 75, 68
@@ -375,10 +377,18 @@ def generate_clock_image(
     return _png_bytes(img)
 
 
+def generate_blank_image() -> bytes:
+    """Generates a blank white PNG image for screen power-saving / blank mode."""
+    img = Image.new("1", (EPD_WIDTH, EPD_HEIGHT), 255)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def log_available_fonts() -> None:
-    found = [f for f in VALID_FONTS
-             if (settings.font_dir / f"{f}.ttf").exists()]
+    """Logs list of available system TTF fonts."""
+    found = [f for f in VALID_FONTS if (FONTS_DIR / f"{f}.ttf").exists()]
     if found:
         logger.info("available fonts: {}", ", ".join(sorted(found)))
     else:
-        logger.warning("no Hebrew font files found in {}", settings.font_dir)
+        logger.warning("no Hebrew font files found in {}", FONTS_DIR)
