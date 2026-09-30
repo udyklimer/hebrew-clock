@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+requirements.txt .
 
 RUN pip install --no-cache-dir --no-binary=Pillow -r requirements.txt \
     && python -c "from PIL import features; assert features.check('raqm'), 'raqm missing!'"
@@ -50,7 +50,8 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY app/ /app/app/
-COPY *.ttf sleeping.png* /app/
+COPY fonts/ /app/fonts/
+COPY sleeping.png* /app/
 
 RUN useradd --create-home --uid 10001 appuser \
     && chown -R appuser:appuser /app
