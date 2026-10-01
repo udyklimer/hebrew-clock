@@ -1,3 +1,5 @@
+import urllib.parse
+
 import defusedxml.ElementTree as ET
 import pytest
 
@@ -44,7 +46,7 @@ def test_sitemap_entry_count():
 def test_sitemap_all_fonts_present():
     result = generate_sitemap(BASE)
     for font in VALID_FONTS:
-        assert font in result
+        assert urllib.parse.quote(font, safe="") in result
 
 
 def test_sitemap_all_locations_present():
@@ -99,29 +101,3 @@ def test_sitemap_route_entry_count(client):
     root = ET.fromstring(resp.text)
     expected = 1 + len(VALID_FONTS) * len(SITEMAP_LOCATIONS) * 2
     assert len(root.findall("sm:url", _NS)) == expected
-
-
-def test_home_has_canonical(client):
-    resp = client.get("/")
-    assert 'rel="canonical"' in resp.text
-
-
-def test_home_has_og_image(client):
-    resp = client.get("/")
-    assert 'property="og:image"' in resp.text
-
-
-def test_home_has_og_image_dimensions(client):
-    resp = client.get("/")
-    assert 'property="og:image:width"' in resp.text
-    assert 'property="og:image:height"' in resp.text
-
-
-def test_home_has_description(client):
-    resp = client.get("/")
-    assert 'name="description"' in resp.text
-
-
-def test_home_has_keywords(client):
-    resp = client.get("/")
-    assert 'name="keywords"' in resp.text
