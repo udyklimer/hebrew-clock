@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>הגדרות שעון - {{ username }}</title>
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-    .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 380px; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 1rem; box-sizing: border-box; }
+    .layout { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; align-items: flex-start; width: 100%; max-width: 1200px; }
+    .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 380px; max-width: 100%; box-sizing: border-box; }
     .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 0.8rem; border-bottom: 1px solid #eee; }
     .user-info { font-size: 0.95rem; color: #333; }
     .logout-btn { color: #dc3545; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
@@ -19,59 +20,180 @@
     .btn-save { width: 100%; padding: 0.75rem; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 600; margin-top: 0.5rem; transition: background 0.2s; }
     .btn-save:hover { background: #218838; }
     .saved-msg { background: #d1e7dd; color: #0f5132; padding: 0.6rem; border-radius: 6px; text-align: center; font-size: 0.9rem; margin-bottom: 1rem; }
+    .hint { font-size: 0.8rem; color: #888; line-height: 1.5; margin: 1rem 0 0; }
+
+    .preview-col { flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
+    .preview-frame { position: relative; aspect-ratio: 800 / 480; background: #1f2937; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .preview-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(31,41,55,0.75); }
+    .overlay.error { background: #1f2937; color: #f87171; font-size: 0.9rem; }
+    .hidden { display: none; }
+    .spinner { width: 36px; height: 36px; border: 4px solid white; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .url-card { background: white; padding: 1rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .url-row { display: flex; gap: 0.5rem; }
+    .url-row input { flex: 1; min-width: 0; direction: ltr; font-family: monospace; font-size: 0.85rem; background: #f8f9fa; }
+    .btn-copy { padding: 0 1rem; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .btn-copy.copied { background: #28a745; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="top-bar">
-      <span class="user-info">שלום, <strong>{{ username }}</strong></span>
-      <a href="/logout" class="logout-btn">התנתק</a>
+  <div class="layout">
+    <div class="card">
+      <div class="top-bar">
+        <span class="user-info">שלום, <strong>{{ username }}</strong></span>
+        <a href="/logout" class="logout-btn">התנתק</a>
+      </div>
+
+      <h2>הגדרות השעון שלי</h2>
+
+      {% if saved %}
+        <div class="saved-msg">✓ ההגדרות נשמרו בהצלחה!</div>
+      {% endif %}
+
+      <form method="post" action="/config">
+        <div class="form-group">
+          <label for="font">גופן (Font):</label>
+          <select name="font" id="font">
+            {% for f in fonts %}
+              <option value="{{ f }}" {% if f == selected_font %}selected{% endif %}>{{ f }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="location">עיר (Location):</label>
+          <input type="text" name="location" id="location" value="{{ selected_location }}" required />
+        </div>
+
+        <div class="form-group">
+          <label for="calendar">לוח שנה (Calendar):</label>
+          <select name="calendar" id="calendar">
+            <option value="gregorian" {% if selected_calendar == 'gregorian' %}selected{% endif %}>לועזי</option>
+            <option value="jewish" {% if selected_calendar == 'jewish' %}selected{% endif %}>עברי</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="clock_style">הצגת שעון (Show Clock):</label>
+          <select name="clock_style" id="clock_style">
+            <option value="analog" {% if selected_clock_style == 'analog' %}selected{% endif %}>אנלוגי</option>
+            <option value="digital" {% if selected_clock_style == 'digital' %}selected{% endif %}>דיגיטלי</option>
+            <option value="none" {% if selected_clock_style == 'none' %}selected{% endif %}>ללא (טקסט בלבד)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="sleeptime">מצב שינה (Sleep Mode):</label>
+          <select name="sleeptime" id="sleeptime">
+            <option value="0" {% if selected_sleeptime == '0' %}selected{% endif %}>כבוי (פועל רגיל)</option>
+            <option value="1" {% if selected_sleeptime == '1' %}selected{% endif %}>מופעל</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+          <input type="checkbox" name="blank" id="blank" value="1" {% if selected_blank %}checked{% endif %} style="width: 18px; height: 18px; cursor: pointer;" />
+          <label for="blank" style="margin-bottom: 0; cursor: pointer;">מסך ריק (כיבוי מסך)</label>
+        </div>
+
+        <button type="submit" class="btn-save">שמור הגדרות</button>
+      </form>
+
+      <p class="hint">התצוגה המקדימה מתעדכנת מיד עם כל שינוי. השעון עצמו יתעדכן רק לאחר לחיצה על "שמור הגדרות".</p>
     </div>
 
-    <h2>הגדרות השעון שלי</h2>
-
-    {% if saved %}
-      <div class="saved-msg">✓ ההגדרות נשמרו בהצלחה!</div>
-    {% endif %}
-
-    <form method="post" action="/config">
-      <div class="form-group">
-        <label for="font">גופן (Font):</label>
-        <select name="font" id="font">
-          {% for f in fonts %}
-            <option value="{{ f }}" {% if f == selected_font %}selected{% endif %}>{{ f }}</option>
-          {% endfor %}
-        </select>
+    <div class="preview-col">
+      <div class="preview-frame">
+        <img id="preview" alt="תצוגה מקדימה של השעון">
+        <div id="spinner" class="overlay hidden"><div class="spinner"></div></div>
+        <div id="preview-error" class="overlay error hidden">טעינת התצוגה המקדימה נכשלה</div>
       </div>
 
-      <div class="form-group">
-        <label for="location">עיר (Location):</label>
-        <input type="text" name="location" id="location" value="{{ selected_location }}" required />
+      <div class="url-card">
+        <label for="clock-url">כתובת השרת (Server URL):</label>
+        <div class="url-row">
+          <input id="clock-url" type="text" readonly>
+          <button id="copy-btn" type="button" class="btn-copy">העתק</button>
+        </div>
+        <p class="hint">בהגדרות המכשיר הזינו את הכתובת הזו ואת שם המשתמש <strong dir="ltr">{{ username }}</strong>.</p>
       </div>
-
-      <div class="form-group">
-        <label for="calendar">לוח שנה (Calendar):</label>
-        <select name="calendar" id="calendar">
-          <option value="gregorian" {% if selected_calendar == 'gregorian' %}selected{% endif %}>לועזי</option>
-          <option value="jewish" {% if selected_calendar == 'jewish' %}selected{% endif %}>עברי</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="sleeptime">מצב שינה (Sleep Mode):</label>
-        <select name="sleeptime" id="sleeptime">
-          <option value="0" {% if selected_sleeptime == '0' %}selected{% endif %}>כבוי (פועל רגיל)</option>
-          <option value="1" {% if selected_sleeptime == '1' %}selected{% endif %}>מופעל</option>
-        </select>
-      </div>
-
-      <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
-        <input type="checkbox" name="blank" id="blank" value="1" {% if selected_blank %}checked{% endif %} style="width: 18px; height: 18px; cursor: pointer;" />
-        <label for="blank" style="margin-bottom: 0; cursor: pointer;">מסך ריק (כיבוי מסך)</label>
-      </div>
-
-      <button type="submit" class="btn-save">שמור הגדרות</button>
-    </form>
+    </div>
   </div>
+
+  <script>
+    const previewImg = document.getElementById('preview');
+    const spinner    = document.getElementById('spinner');
+    const errorEl    = document.getElementById('preview-error');
+    const urlInput   = document.getElementById('clock-url');
+    const copyBtn    = document.getElementById('copy-btn');
+
+    let debounceTimer = null;
+    let latestPath    = null;
+
+    // Preview of the current (possibly unsaved) form values
+    function buildPath() {
+      const p = new URLSearchParams({
+        font:      document.getElementById('font').value,
+        location:  document.getElementById('location').value.trim() || 'Haifa',
+        calendar:  document.getElementById('calendar').value,
+        clock_style: document.getElementById('clock_style').value,
+        sleeptime: document.getElementById('sleeptime').value,
+        blank:     document.getElementById('blank').checked ? '1' : '0',
+      });
+      return '/clock.png?' + p.toString();
+    }
+
+    function updatePreview() {
+      const path = buildPath();
+      latestPath = path;
+
+      spinner.classList.remove('hidden');
+      errorEl.classList.add('hidden');
+
+      const next = new Image();
+      next.onload = () => {
+        if (path !== latestPath) return;  // a newer selection is already loading
+        previewImg.src = path;
+        spinner.classList.add('hidden');
+      };
+      next.onerror = () => {
+        if (path !== latestPath) return;
+        spinner.classList.add('hidden');
+        errorEl.classList.remove('hidden');
+      };
+      next.src = path;
+    }
+
+    function updateDebounced() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(updatePreview, 500);
+    }
+
+    ['font', 'calendar', 'clock_style', 'sleeptime', 'blank'].forEach(id =>
+      document.getElementById(id).addEventListener('change', updatePreview)
+    );
+    document.getElementById('location').addEventListener('input', updateDebounced);
+
+    function flashCopied() {
+      copyBtn.textContent = 'הועתק!';
+      copyBtn.classList.add('copied');
+      setTimeout(() => {
+        copyBtn.textContent = 'העתק';
+        copyBtn.classList.remove('copied');
+      }, 1500);
+    }
+
+    copyBtn.addEventListener('click', () => {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(urlInput.value).then(flashCopied).catch(() => urlInput.select());
+      } else {
+        urlInput.select();
+      }
+    });
+
+    // The device builds the image URL itself from the server URL and user name
+    urlInput.value = window.location.origin;
+    updatePreview();
+  </script>
 </body>
 </html>

@@ -134,7 +134,7 @@ def test_save_config_sanitizes_input(client):
     assert resp.headers["location"] == "/config?saved=1"
     assert db.get_user_settings("cfguser") == {
         "font": clock.DEFAULT_FONT, "location": "Eilat", "calendar": "gregorian",
-        "sleeptime": "0", "blank": "1",
+        "sleeptime": "0", "blank": "1", "clock_style": "analog",
     }
 
 
@@ -158,3 +158,46 @@ def test_get_israel_time_is_naive_and_current():
     assert now.tzinfo is None
     expected = datetime.datetime.now(clock.ISRAEL_TZ).replace(tzinfo=None)
     assert abs((now - expected).total_seconds() - clock.settings.display_lag) < 5
+
+
+# ── Config page preview ───────────────────────────────
+
+def test_config_page_has_live_preview(client):
+    _register(client, "previewuser")
+    resp = client.get("/config")
+    assert 'id="preview"' in resp.text
+    assert 'id="clock-url"' in resp.text
+    assert "previewuser" in resp.text  # shown next to the server URL
+
+
+def test_preview_params_override_saved_settings(client):
+    _register(client, "overrideuser")
+    db.update_user_settings("overrideuser", "DavidLibre-Bold", "Haifa", "gregorian", "0", "1")
+    blank = client.get("/clock.png?user=overrideuser").content
+    shown = client.get(
+        "/clock.png?user=overrideuser&font=DavidLibre-Bold&location=Haifa"
+        "&calendar=gregorian&sleeptime=0&blank=0"
+    )
+    assert shown.headers["content-type"] == "image/png"
+    assert shown.content != blank
+
+
+# ── Clock style ───────────────────────────────────────
+
+def test_clock_style_is_saved_and_validated(client):
+    _register(client, "styleuser")
+    form = {"font": clock.DEFAULT_FONT, "location": "Haifa", "calendar": "gregorian"}
+    client.post("/config", data={**form, "clock_style": "digital"})
+    assert db.get_user_settings("styleuser")["clock_style"] == "digital"
+    assert 'value="digital" selected' in client.get("/config").text
+    client.post("/config", data={**form, "clock_style": "sundial"})
+    assert db.get_user_settings("styleuser")["clock_style"] == "analog"
+
+
+def test_clock_styles_render_differently(client):
+    images = {
+        style: client.get(f"/clock.png?clock_style={style}").content
+        for style in ("analog", "digital", "none")
+    }
+    assert len(set(images.values())) == 3
+    assert client.get("/clock.png?clock_style=bogus").status_code == 200

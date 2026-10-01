@@ -1,5 +1,6 @@
 """Synchronous image-generation service. Runs in a thread-pool worker."""
 import datetime
+import functools
 import io
 import math
 import random
@@ -29,6 +30,10 @@ if not VALID_FONTS:
     VALID_FONTS = {"DavidLibre-Bold", "FrankRuhlLibre-Bold", "FrankRuhlLibre", "Heebo-Bold", "NotoSansHebrew-Bold"}
 
 DEFAULT_FONT = "DavidLibre-Bold"
+
+# What to show above the Hebrew time
+VALID_CLOCK_STYLES = {"analog", "digital", "none"}
+DEFAULT_CLOCK_STYLE = "analog"
 
 # ── Hebrew time tables ────────────────────────────────
 
@@ -102,6 +107,69 @@ def get_font(size: int, font_name: str = DEFAULT_FONT) -> ImageFont.FreeTypeFont
             except Exception:
                 pass
     return ImageFont.load_default()
+
+
+# Characters a font may lack: Hebrew points (nikud), geresh/gershayim, minus, degree, colon
+_OPTIONAL_CHARS = [chr(c) for c in range(0x05B0, 0x05C8)] + ["׳", "״", "-", "°", ":"]
+# Plain replacements for missing punctuation; missing points are simply dropped
+_CHAR_FALLBACKS = {"׳": "'", "״": '"'}
+
+
+@functools.lru_cache(maxsize=None)
+def _missing_chars(font_name: str) -> frozenset[str]:
+    """Returns the optional characters that the font has no glyph for."""
+    try:
+        # Basic layout maps each character straight to its glyph, with no shaping
+        font = ImageFont.truetype(str(FONTS_DIR / f"{font_name}.ttf"), 40,
+                                  layout_engine=ImageFont.Layout.BASIC)
+        notdef = font.getmask("\uffff")
+        return frozenset(
+            ch for ch in _OPTIONAL_CHARS
+            if (mask := font.getmask(ch)).size == notdef.size and bytes(mask) == bytes(notdef)
+        )
+    except Exception as exc:
+        logger.warning("Could not inspect font {}: {}", font_name, exc)
+        return frozenset()
+
+
+def _adapt_text(text: str, font_name: str) -> str:
+    """Drops or replaces characters the font cannot draw (e.g. nikud)."""
+    missing = _missing_chars(font_name)
+    if not missing:
+        return text
+    return "".join(_CHAR_FALLBACKS.get(ch, "") if ch in missing else ch for ch in text)
+
+
+def _draw_temperature(draw: ImageDraw.Draw, cx: float, cy: float, temp: int,
+                      font: ImageFont.FreeTypeFont, font_name: str) -> None:
+    """Draws e.g. '-3°' centred on (cx, cy), drawing the minus/degree by hand if missing."""
+    missing = _missing_chars(font_name)
+    if "-" not in missing and "°" not in missing:
+        draw.text((cx, cy), f"{temp}°", font=font, fill=0, anchor="mm")
+        return
+
+    ring_r, gap, dash_w = 5, 4, 12
+    draw_dash = temp < 0 and "-" in missing
+    digits = str(abs(temp)) if draw_dash else str(temp)
+    if "°" not in missing:
+        digits += "°"
+    num_w = draw.textlength(digits, font=font)
+    total_w = num_w
+    if draw_dash:
+        total_w += dash_w + gap
+    if "°" in missing:
+        total_w += gap + 2 * ring_r
+
+    x = cx - total_w / 2
+    if draw_dash:
+        draw.line([(x, cy), (x + dash_w, cy)], fill=0, width=4)
+        x += dash_w + gap
+    draw.text((x, cy), digits, font=font, fill=0, anchor="lm")
+    if "°" in missing:
+        _, top, _, _ = draw.textbbox((x, cy), "0", font=font, anchor="lm")
+        ring_cx = x + num_w + gap + ring_r
+        draw.ellipse([ring_cx - ring_r, top, ring_cx + ring_r, top + 2 * ring_r],
+                     outline=0, width=2)
 
 
 def _png_bytes(img: Image.Image) -> bytes:
@@ -224,6 +292,21 @@ def _draw_analog_clock(draw: ImageDraw.Draw, cx: int, cy: int, r: int,
                cy + (r * 0.75) * math.sin(min_angle)], fill=0, width=2)
     draw.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill=0)
 
+def _draw_digital_clock(draw: ImageDraw.Draw, cx: int, cy: int,
+                        h24: int, m: int, font_name: str) -> None:
+    """Draws HH:mm at the top center, in place of the analog clock face."""
+    font = get_font(100, font_name)
+    hh, mm = f"{h24:02d}", f"{m:02d}"
+    if ":" not in _missing_chars(font_name):
+        draw.text((cx, cy), f"{hh}:{mm}", font=font, fill=0, anchor="mm")
+        return
+    # Font has no colon: draw the two dots by hand between the numbers
+    gap, dot_r = 16, 6
+    draw.text((cx - gap, cy), hh, font=font, fill=0, anchor="rm")
+    draw.text((cx + gap, cy), mm, font=font, fill=0, anchor="lm")
+    for dy in (-18, 18):
+        draw.ellipse([cx - dot_r, cy + dy - dot_r, cx + dot_r, cy + dy + dot_r], fill=0)
+
 # ── Image generators ──────────────────────────────────
 
 def _generate_night_image(font_name: str) -> bytes:
@@ -259,9 +342,9 @@ def _generate_night_image(font_name: str) -> bytes:
             logger.warning("sleeping image error: {}", exc)
 
     text_cx = (W - 380 - 40) // 2
-    draw.text((text_cx, H // 2 - 30), "זְמַן לִישׁוֹן",
+    draw.text((text_cx, H // 2 - 30), _adapt_text("זְמַן לִישׁוֹן", font_name),
               font=get_font(72, font_name), fill=255, anchor="mm")
-    draw.text((text_cx, H // 2 + 55), "לַיְלָה טוֹב",
+    draw.text((text_cx, H // 2 + 55), _adapt_text("לַיְלָה טוֹב", font_name),
               font=get_font(44, font_name), fill=180, anchor="mm")
     return _png_bytes(img)
 
@@ -271,6 +354,7 @@ def generate_clock_image(
     sleep_time:  bool       = False,
     weather:     dict | None = None,
     jewish_date: str | None  = None,
+    clock_style: str        = DEFAULT_CLOCK_STYLE,
 ) -> bytes:
     """Generates full Hebrew clock screen image."""
     fn = font_name if font_name in VALID_FONTS else DEFAULT_FONT
@@ -290,22 +374,31 @@ def generate_clock_image(
     draw.rectangle([PAD2, PAD2, W - PAD2, H - PAD2], outline=0, width=1)
 
     lines       = _get_time_lines(h24, m)
-    time_lines  = [l for l in lines if l not in PERIOD_WORDS]
-    period_line = next((l for l in lines if l in PERIOD_WORDS), "")
+    time_lines  = [_adapt_text(l, fn) for l in lines if l not in PERIOD_WORDS]
+    period_line = _adapt_text(next((l for l in lines if l in PERIOD_WORDS), ""), fn)
 
-    font_large  = get_font(100, fn)
     font_small  = get_font(34,  fn)
+    n           = len(time_lines)
 
-    clock_cx, clock_cy, clock_r = W // 2, PAD2 + 75, 68
-    _draw_analog_clock(draw, clock_cx, clock_cy, clock_r, h24, m, fn)
+    if clock_style == "none":
+        # No clock: larger text, centred in the whole area above the bottom bar
+        font_large = get_font(120, fn)
+        line_h     = 115
+        ty         = (PAD2 + H - 105) // 2 - (n - 1) * line_h // 2
+    else:
+        font_large = get_font(100, fn)
+        clock_cx, clock_cy, clock_r = W // 2, PAD2 + 75, 68
+        if clock_style == "digital":
+            _draw_digital_clock(draw, clock_cx, clock_cy, h24, m, fn)
+        else:
+            _draw_analog_clock(draw, clock_cx, clock_cy, clock_r, h24, m, fn)
 
-    text_start_y = clock_cy + clock_r + 15
-    text_area_h  = H - 110 - text_start_y
-    n            = len(time_lines)
-    line_h       = 95
-    total_h      = n * line_h
-    ty           = max(clock_cy + clock_r + 40,
-                       text_start_y + (text_area_h - total_h) // 2 + 10)
+        text_start_y = clock_cy + clock_r + 15
+        text_area_h  = H - 110 - text_start_y
+        line_h       = 95
+        total_h      = n * line_h
+        ty           = max(clock_cy + clock_r + 40,
+                           text_start_y + (text_area_h - total_h) // 2 + 10)
 
     for i, line in enumerate(time_lines):
         f = font_large
@@ -316,7 +409,7 @@ def generate_clock_image(
             current_size = getattr(f, "size", 100)
             if current_size <= 40:
                 break
-            f = get_font(current_size - 6, fn)
+            f = get_font(int(current_size) - 6, fn)
         draw.text((W // 2, ty + i * line_h), line, font=f, fill=0, anchor="mm")
 
     sep_y = H - 105
@@ -330,20 +423,23 @@ def generate_clock_image(
     draw.line([(div_x,  H - 92), (div_x,  H - 15)], fill=0, width=1)
     draw.line([(div_x2, H - 92), (div_x2, H - 15)], fill=0, width=1)
 
-    day_name  = DAYS_HE[now.weekday()]
+    day_name  = _adapt_text(DAYS_HE[now.weekday()], fn)
+    if jewish_date:
+        jewish_date = _adapt_text(jewish_date, fn)
     if jewish_date and "\n" in jewish_date:
         date_str, year_str = jewish_date.split("\n", 1)
     else:
-        date_str = jewish_date if jewish_date else f"{now.day} {MONTHS_HE[now.month - 1]}"
+        date_str = jewish_date if jewish_date else _adapt_text(f"{now.day} {MONTHS_HE[now.month - 1]}", fn)
         year_str = None
     left_cx   = (bar_left + div_x) // 2
     cell_w    = div_x - bar_left - 10
 
-    def _fit_font(text: str, start: int, minimum: int = 18) -> ImageFont.FreeTypeFont:
+    def _fit_font(text: str, start: int, minimum: int = 18,
+                  max_w: int = cell_w) -> ImageFont.FreeTypeFont:
         f = get_font(start, fn)
         while True:
             bbox = draw.textbbox((0, 0), text, font=f)
-            if (bbox[2] - bbox[0]) <= cell_w:
+            if (bbox[2] - bbox[0]) <= max_w:
                 return f
             cur = getattr(f, "size", start)
             if cur <= minimum:
@@ -372,10 +468,12 @@ def generate_clock_image(
         icon_x      = right_start + (right_end - right_start) // 4
         text_x      = right_start + 3 * (right_end - right_start) // 4
         _draw_weather_icon(draw, icon_x, bar_cy, weather.get("icon_key", "cloud"), size=34)
-        draw.text((text_x, bar_cy - 14), f"{weather['temp']}°",
-                  font=get_font(40, fn), fill=0, anchor="mm")
-        draw.text((text_x, bar_cy + 16), weather.get("desc", ""),
-                  font=font_small, fill=0, anchor="mm")
+        _draw_temperature(draw, text_x, bar_cy - 14, weather["temp"], get_font(40, fn), fn)
+        desc = _adapt_text(weather.get("desc", ""), fn)
+        # Keep the description inside its half of the cell, clear of the icon
+        desc_w = 2 * (right_end - text_x) - 8
+        draw.text((text_x, bar_cy + 16), desc,
+                  font=_fit_font(desc, 34, minimum=16, max_w=desc_w), fill=0, anchor="mm")
 
     return _png_bytes(img)
 

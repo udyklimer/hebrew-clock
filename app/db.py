@@ -37,7 +37,8 @@ def init_db():
                 location TEXT NOT NULL,
                 calendar TEXT NOT NULL,
                 sleeptime TEXT NOT NULL,
-                blank TEXT DEFAULT '0'
+                blank TEXT DEFAULT '0',
+                clock_style TEXT DEFAULT 'analog'
             )
         """
         )
@@ -46,6 +47,14 @@ def init_db():
         try:
             conn.execute(
                 "ALTER TABLE user_settings ADD COLUMN blank TEXT DEFAULT '0'"
+            )
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Ensure 'clock_style' column exists for existing database files
+        try:
+            conn.execute(
+                "ALTER TABLE user_settings ADD COLUMN clock_style TEXT DEFAULT 'analog'"
             )
         except sqlite3.OperationalError:
             pass  # Column already exists
@@ -100,7 +109,7 @@ def get_user_settings(username: str) -> dict:
     init_db()
     with get_db() as conn:
         row = conn.execute(
-            "SELECT font, location, calendar, sleeptime, blank FROM user_settings WHERE username = ?",
+            "SELECT font, location, calendar, sleeptime, blank, clock_style FROM user_settings WHERE username = ?",
             (username.lower(),),
         ).fetchone()
         if row:
@@ -110,6 +119,7 @@ def get_user_settings(username: str) -> dict:
                 "calendar": row["calendar"],
                 "sleeptime": row["sleeptime"],
                 "blank": str(row["blank"]) if "blank" in row.keys() else "0",
+                "clock_style": row["clock_style"] or "analog",
             }
         return {
             "font": "DavidLibre-Bold",
@@ -117,6 +127,7 @@ def get_user_settings(username: str) -> dict:
             "calendar": "gregorian",
             "sleeptime": "0",
             "blank": "0",
+            "clock_style": "analog",
         }
 
 
@@ -127,19 +138,21 @@ def update_user_settings(
     calendar: str,
     sleeptime: str,
     blank: str = "0",
+    clock_style: str = "analog",
 ):
     init_db()
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO user_settings (username, font, location, calendar, sleeptime, blank)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO user_settings (username, font, location, calendar, sleeptime, blank, clock_style)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(username) DO UPDATE SET
                 font=excluded.font,
                 location=excluded.location,
                 calendar=excluded.calendar,
                 sleeptime=excluded.sleeptime,
-                blank=excluded.blank
+                blank=excluded.blank,
+                clock_style=excluded.clock_style
             """,
-            (username.lower(), font, location, calendar, sleeptime, blank),
+            (username.lower(), font, location, calendar, sleeptime, blank, clock_style),
         )

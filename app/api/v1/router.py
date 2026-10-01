@@ -136,6 +136,7 @@ async def config_page(
             "selected_calendar": user_settings.get("calendar", DEFAULT_CALENDAR),
             "selected_sleeptime": user_settings.get("sleeptime", DEFAULT_SLEEPTIME),
             "selected_blank": user_settings.get("blank", DEFAULT_BLANK) == "1",
+            "selected_clock_style": user_settings.get("clock_style", clock.DEFAULT_CLOCK_STYLE),
             "saved": request.query_params.get("saved") == "1",
             "gtag_id": settings.gtag_id, 
         }
@@ -149,6 +150,7 @@ async def save_config(
     calendar: str = Form(...),
     sleeptime: str = Form("0"),
     blank: Optional[str] = Form(None),
+    clock_style: str = Form(clock.DEFAULT_CLOCK_STYLE),
     user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
 ) -> Response:
     username = read_session(user_session)
@@ -162,7 +164,9 @@ async def save_config(
     location = location.strip()[:MAX_LOCATION_LENGTH] or DEFAULT_LOCATION
     sleeptime = "1" if sleeptime == "1" else "0"
     blank_val = "1" if blank == "1" else "0"
-    db.update_user_settings(username, font, location, calendar, sleeptime, blank_val)
+    if clock_style not in clock.VALID_CLOCK_STYLES:
+        clock_style = clock.DEFAULT_CLOCK_STYLE
+    db.update_user_settings(username, font, location, calendar, sleeptime, blank_val, clock_style)
     return RedirectResponse(url="/config?saved=1", status_code=303)
 
 
@@ -191,6 +195,7 @@ async def get_clock(
     calendar: Optional[str] = Query(None),
     sleeptime: Optional[str] = Query(None),
     blank: Optional[str] = Query(None),
+    clock_style: Optional[str] = Query(None),
 ) -> Response:
     # Priority: explicit query params > DB settings for user > fallback defaults
     if user:
@@ -202,6 +207,7 @@ async def get_clock(
             "calendar": DEFAULT_CALENDAR,
             "sleeptime": DEFAULT_SLEEPTIME,
             "blank": DEFAULT_BLANK,
+            "clock_style": clock.DEFAULT_CLOCK_STYLE,
         }
 
     selected_blank = blank if blank is not None else user_cfg.get("blank", DEFAULT_BLANK)
@@ -215,6 +221,9 @@ async def get_clock(
     selected_loc = location or user_cfg.get("location", DEFAULT_LOCATION)
     selected_cal = calendar or user_cfg.get("calendar", DEFAULT_CALENDAR)
     selected_sleep = sleeptime or user_cfg.get("sleeptime", DEFAULT_SLEEPTIME)
+    selected_style = clock_style or user_cfg.get("clock_style", clock.DEFAULT_CLOCK_STYLE)
+    if selected_style not in clock.VALID_CLOCK_STYLES:
+        selected_style = clock.DEFAULT_CLOCK_STYLE
 
     w = await weather_svc.get_weather(selected_loc, request.app.state.http_client)
 
@@ -229,6 +238,7 @@ async def get_clock(
         sleep_time=selected_sleep == "1",
         weather=w,
         jewish_date=jdate,
+        clock_style=selected_style,
     )
     return Response(
         content=img_bytes,
