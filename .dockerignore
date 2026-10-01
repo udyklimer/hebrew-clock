@@ -12,4 +12,6 @@ docs
 !README.md
 .env
 .env.*
+*.db
+.secret_key
 hebclk/

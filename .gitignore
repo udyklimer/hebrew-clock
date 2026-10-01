@@ -30,6 +30,8 @@ build/
 .env
 .env.*
 !.env.example
+*.db
+.secret_key
 
 # Editor / OS
 .idea/

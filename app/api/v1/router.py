@@ -7,6 +7,13 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import settings
+from app.core.security import (
+    MIN_PASSWORD_LENGTH,
+    SESSION_COOKIE,
+    SESSION_MAX_AGE,
+    create_session,
+    read_session,
+)
 from app.services import clock, weather as weather_svc, jewish_cal as jewish_cal_svc
 from app.services import seo as seo_svc
 from app import db
@@ -18,18 +25,35 @@ DEFAULT_LOCATION = "Haifa"
 DEFAULT_CALENDAR = "gregorian"
 DEFAULT_SLEEPTIME = "0"
 DEFAULT_BLANK = "0"
+VALID_CALENDARS = {"gregorian", "jewish"}
+MAX_LOCATION_LENGTH = 64
 
 # Absolute path to app/templates relative to app/api/v1/router.py
 _TEMPLATES = Jinja2Templates(
     directory=str(Path(__file__).resolve().parents[2] / "templates")
 )
 
+
+def _login_response(request: Request, username: str) -> Response:
+    """Redirects to /config with a signed session cookie for the user."""
+    response = RedirectResponse(url="/config", status_code=303)
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=create_session(username),
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home(
     request: Request,
-    user_session: Optional[str] = Cookie(None, alias="session_user")
+    user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
 ) -> Response:
-    if user_session:
+    if read_session(user_session):
         return RedirectResponse(url="/config", status_code=303)
     
     return _TEMPLATES.TemplateResponse(
@@ -52,6 +76,12 @@ async def register(
             {"error": "Username must contain English letters and digits only.", "gtag_id": settings.gtag_id}
         )
     
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return _TEMPLATES.TemplateResponse(
+            request, "index.html",
+            {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters.", "gtag_id": settings.gtag_id}
+        )
+
     success = db.register_user(clean_username, password)
     if not success:
         return _TEMPLATES.TemplateResponse(
@@ -59,9 +89,7 @@ async def register(
             {"error": "Username already taken.", "gtag_id": settings.gtag_id}
         )
     
-    response = RedirectResponse(url="/config", status_code=303)
-    response.set_cookie(key="session_user", value=clean_username.lower(), httponly=True)
-    return response
+    return _login_response(request, clean_username.lower())
 
 
 @router.post("/login", response_class=HTMLResponse, include_in_schema=False)
@@ -72,9 +100,7 @@ async def login(
 ) -> Response:
     clean_username = username.strip()
     if db.authenticate_user(clean_username, password):
-        response = RedirectResponse(url="/config", status_code=303)
-        response.set_cookie(key="session_user", value=clean_username.lower(), httponly=True)
-        return response
+        return _login_response(request, clean_username.lower())
     
     return _TEMPLATES.TemplateResponse(
         request, "index.html",
@@ -85,24 +111,25 @@ async def login(
 @router.get("/logout", include_in_schema=False)
 async def logout():
     response = RedirectResponse(url="/", status_code=303)
-    response.delete_cookie("session_user")
+    response.delete_cookie(SESSION_COOKIE)
     return response
 
 
 @router.get("/config", response_class=HTMLResponse, include_in_schema=False)
 async def config_page(
     request: Request,
-    user_session: Optional[str] = Cookie(None, alias="session_user")
+    user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
 ) -> Response:
-    if not user_session:
+    username = read_session(user_session)
+    if not username:
         return RedirectResponse(url="/", status_code=303)
     
-    user_settings = db.get_user_settings(user_session)
+    user_settings = db.get_user_settings(username)
     return _TEMPLATES.TemplateResponse(
         request,
         "config.html",
         {
-            "username": user_session,
+            "username": username,
             "fonts": sorted(clock.VALID_FONTS),
             "selected_font": user_settings.get("font", DEFAULT_FONT),
             "selected_location": user_settings.get("location", DEFAULT_LOCATION),
@@ -122,13 +149,20 @@ async def save_config(
     calendar: str = Form(...),
     sleeptime: str = Form("0"),
     blank: Optional[str] = Form(None),
-    user_session: Optional[str] = Cookie(None, alias="session_user")
+    user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
 ) -> Response:
-    if not user_session:
+    username = read_session(user_session)
+    if not username:
         return RedirectResponse(url="/", status_code=303)
     
+    if font not in clock.VALID_FONTS:
+        font = DEFAULT_FONT
+    if calendar not in VALID_CALENDARS:
+        calendar = DEFAULT_CALENDAR
+    location = location.strip()[:MAX_LOCATION_LENGTH] or DEFAULT_LOCATION
+    sleeptime = "1" if sleeptime == "1" else "0"
     blank_val = "1" if blank == "1" else "0"
-    db.update_user_settings(user_session, font, location, calendar, sleeptime, blank_val)
+    db.update_user_settings(username, font, location, calendar, sleeptime, blank_val)
     return RedirectResponse(url="/config?saved=1", status_code=303)
 
 
@@ -158,7 +192,7 @@ async def get_clock(
     sleeptime: Optional[str] = Query(None),
     blank: Optional[str] = Query(None),
 ) -> Response:
-    # Priority: DB settings for user > explicit query params > fallback defaults
+    # Priority: explicit query params > DB settings for user > fallback defaults
     if user:
         user_cfg = db.get_user_settings(user)
     else:

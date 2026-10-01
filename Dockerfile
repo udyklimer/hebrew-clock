@@ -53,9 +53,15 @@ COPY app/ /app/app/
 COPY fonts/ /app/fonts/
 COPY sleeping.png* /app/
 
+# clock.db and the session key live in /data; mount a volume there to keep them
+ENV DATA_DIR=/data
+
 RUN useradd --create-home --uid 10001 appuser \
-    && chown -R appuser:appuser /app
+    && mkdir /data \
+    && chown -R appuser:appuser /app /data
 USER appuser
+
+VOLUME /data
 
 EXPOSE 8765
 

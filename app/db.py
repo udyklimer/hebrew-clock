@@ -1,12 +1,15 @@
 import sqlite3
 import re
-from pathlib import Path
+
+from app.core.config import settings
+from app.core.security import hash_password, is_hashed, verify_password
 
 # DB file path
-DB_PATH = Path("clock.db")
+DB_PATH = settings.data_dir / "clock.db"
 
 
 def get_db():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -47,6 +50,14 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Hash any passwords left in plaintext by older versions
+        for row in conn.execute("SELECT username, password FROM users").fetchall():
+            if not is_hashed(row["password"]):
+                conn.execute(
+                    "UPDATE users SET password = ? WHERE username = ?",
+                    (hash_password(row["password"]), row["username"]),
+                )
+
 
 def is_valid_username(username: str) -> bool:
     # Allow alphanumeric characters and underscores, length 3-30
@@ -60,7 +71,7 @@ def register_user(username: str, password: str) -> bool:
         try:
             conn.execute(
                 "INSERT INTO users (username, password) VALUES (?, ?)",
-                (clean_uname, password),
+                (clean_uname, hash_password(password)),
             )
             # Create default settings upon user creation
             conn.execute(
@@ -82,9 +93,7 @@ def authenticate_user(username: str, password: str) -> bool:
         row = conn.execute(
             "SELECT password FROM users WHERE username = ?", (clean_uname,)
         ).fetchone()
-        if row and row["password"] == password:
-            return True
-        return False
+        return bool(row) and verify_password(password, row["password"])
 
 
 def get_user_settings(username: str) -> dict:

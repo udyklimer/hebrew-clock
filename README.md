@@ -140,6 +140,8 @@ The container expects font `.ttf` files and `sleeping.png` to be present at buil
 | `DISPLAY_LAG` | `8` | Seconds added to Israel time before rendering (accounts for ePaper refresh time) |
 | `LOG_LEVEL` | `info` | Loguru log level |
 | `FONT_DIR` | app root | Directory containing `.ttf` files |
+| `DATA_DIR` | app root (`/data` in Docker) | Directory holding `clock.db` (users + settings). Mount a volume here to keep it across rebuilds. |
+| `SECRET_KEY` | auto-generated | Key that signs login cookies. If unset, one is generated and stored in `DATA_DIR/.secret_key`. |
 
 ---
 

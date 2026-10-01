@@ -7,4 +7,9 @@ services:
       PORT: 8765
       DISPLAY_LAG: 8
       LOG_LEVEL: info
+    volumes:
+      - hebclk-data:/data   # clock.db + session key, kept across rebuilds
     restart: unless-stopped
+
+volumes:
+  hebclk-data:
