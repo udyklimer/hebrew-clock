@@ -292,19 +292,79 @@ def _draw_analog_clock(draw: ImageDraw.Draw, cx: int, cy: int, r: int,
                cy + (r * 0.75) * math.sin(min_angle)], fill=0, width=2)
     draw.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill=0)
 
-def _draw_digital_clock(draw: ImageDraw.Draw, cx: int, cy: int,
+def _ink_bbox(draw: ImageDraw.Draw, text: str,
+              font: ImageFont.FreeTypeFont) -> tuple[float, float, float, float]:
+    """Bounding box of the drawn pixels, relative to the left end of the baseline."""
+    return draw.textbbox((0, 0), text, font=font, anchor="ls")
+
+
+def _layout_lines(draw: ImageDraw.Draw, lines: list[tuple[str, int]],
+                  box: tuple[int, int, int, int], font_name: str,
+                  gap: int = 6, min_size: int = 14) -> list[tuple[str, ImageFont.FreeTypeFont, float, float]]:
+    """Fits stacked lines of (text, preferred size) inside box = (x0, y0, x1, y1).
+
+    Sizes are reduced until every line fits the width and the stack fits the
+    height, measured on the real drawn pixels (tall letters and nikud included).
+    Returns (text, font, centre x, centre y) for each line.
+    """
+    x0, y0, x1, y1 = box
+    scale = 1.0
+    while True:
+        fitted = []
+        for text, preferred in lines:
+            size = max(min_size, int(preferred * scale))
+            font = get_font(size, font_name)
+            l, t, r, b = _ink_bbox(draw, text, font)
+            while (r - l) > (x1 - x0) and size > min_size:
+                size = max(min_size, size - 2)
+                font = get_font(size, font_name)
+                l, t, r, b = _ink_bbox(draw, text, font)
+            fitted.append((text, font, b - t, size))
+        total = sum(h for _, _, h, _ in fitted) + gap * (len(fitted) - 1)
+        if total <= (y1 - y0) or all(size <= min_size for *_, size in fitted):
+            break
+        scale *= 0.94
+
+    placed = []
+    y = y0 + (y1 - y0 - total) / 2
+    for text, font, h, _ in fitted:
+        placed.append((text, font, (x0 + x1) / 2, y + h / 2))
+        y += h + gap
+    return placed
+
+
+def _draw_centered(draw: ImageDraw.Draw, text: str, font: ImageFont.FreeTypeFont,
+                   cx: float, cy: float) -> None:
+    """Draws text so that its drawn pixels are centred on (cx, cy)."""
+    l, t, r, b = _ink_bbox(draw, text, font)
+    draw.text((cx - (l + r) / 2, cy - (t + b) / 2), text, font=font, fill=0, anchor="ls")
+
+
+def _middle_anchor_y(draw: ImageDraw.Draw, text: str, font: ImageFont.FreeTypeFont,
+                     ink_cy: float) -> float:
+    """Returns the y to use with a middle ('m') anchor so the ink is centred on ink_cy."""
+    _, t, _, b = draw.textbbox((0, 0), text, font=font, anchor="lm")
+    return ink_cy - (t + b) / 2
+
+
+def _draw_digital_clock(draw: ImageDraw.Draw, box: tuple[int, int, int, int],
                         h24: int, m: int, font_name: str) -> None:
-    """Draws HH:mm at the top center, in place of the analog clock face."""
-    font = get_font(100, font_name)
+    """Draws HH:mm inside box, in place of the analog clock face."""
     hh, mm = f"{h24:02d}", f"{m:02d}"
     if ":" not in _missing_chars(font_name):
-        draw.text((cx, cy), f"{hh}:{mm}", font=font, fill=0, anchor="mm")
+        text, font, cx, cy = _layout_lines(draw, [(f"{hh}:{mm}", 100)], box, font_name)[0]
+        _draw_centered(draw, text, font, cx, cy)
         return
     # Font has no colon: draw the two dots by hand between the numbers
     gap, dot_r = 16, 6
-    draw.text((cx - gap, cy), hh, font=font, fill=0, anchor="rm")
-    draw.text((cx + gap, cy), mm, font=font, fill=0, anchor="lm")
-    for dy in (-18, 18):
+    x0, y0, x1, y1 = box
+    text, font, cx, cy = _layout_lines(
+        draw, [(hh + mm, 100)], (x0 + gap, y0, x1 - gap, y1), font_name)[0]
+    cy_m = _middle_anchor_y(draw, text, font, cy)
+    draw.text((cx - gap, cy_m), hh, font=font, fill=0, anchor="rm")
+    draw.text((cx + gap, cy_m), mm, font=font, fill=0, anchor="lm")
+    dot_dy = max(8, font.size * 0.18)
+    for dy in (-dot_dy, dot_dy):
         draw.ellipse([cx - dot_r, cy + dy - dot_r, cx + dot_r, cy + dy + dot_r], fill=0)
 
 # ── Image generators ──────────────────────────────────
@@ -377,103 +437,68 @@ def generate_clock_image(
     time_lines  = [_adapt_text(l, fn) for l in lines if l not in PERIOD_WORDS]
     period_line = _adapt_text(next((l for l in lines if l in PERIOD_WORDS), ""), fn)
 
-    font_small  = get_font(34,  fn)
-    n           = len(time_lines)
-
-    if clock_style == "none":
-        # No clock: larger text, centred in the whole area above the bottom bar
-        font_large = get_font(120, fn)
-        line_h     = 115
-        ty         = (PAD2 + H - 105) // 2 - (n - 1) * line_h // 2
-    else:
-        font_large = get_font(100, fn)
-        clock_cx, clock_cy, clock_r = W // 2, PAD2 + 75, 68
-        if clock_style == "digital":
-            _draw_digital_clock(draw, clock_cx, clock_cy, h24, m, fn)
-        else:
-            _draw_analog_clock(draw, clock_cx, clock_cy, clock_r, h24, m, fn)
-
-        text_start_y = clock_cy + clock_r + 15
-        text_area_h  = H - 110 - text_start_y
-        line_h       = 95
-        total_h      = n * line_h
-        ty           = max(clock_cy + clock_r + 40,
-                           text_start_y + (text_area_h - total_h) // 2 + 10)
-
-    for i, line in enumerate(time_lines):
-        f = font_large
-        while True:
-            bbox = draw.textbbox((0, 0), line, font=f)
-            if (bbox[2] - bbox[0]) < (W - 60):
-                break
-            current_size = getattr(f, "size", 100)
-            if current_size <= 40:
-                break
-            f = get_font(int(current_size) - 6, fn)
-        draw.text((W // 2, ty + i * line_h), line, font=f, fill=0, anchor="mm")
-
-    sep_y = H - 105
-    draw.line([(PAD2 + 8, sep_y), (W - PAD2 - 8, sep_y)], fill=0, width=1)
+    sep_y     = H - 105
     bar_cy    = H - 52
     bar_left  = PAD2 + 8
     bar_right = W - PAD2 - 8
     bar_width = bar_right - bar_left
     div_x     = bar_left + bar_width // 3
     div_x2    = bar_left + 2 * bar_width // 3
+    draw.line([(bar_left, sep_y), (bar_right, sep_y)], fill=0, width=1)
     draw.line([(div_x,  H - 92), (div_x,  H - 15)], fill=0, width=1)
     draw.line([(div_x2, H - 92), (div_x2, H - 15)], fill=0, width=1)
+
+    def draw_block(lines: list[tuple[str, int]], box: tuple[int, int, int, int],
+                   gap: int = 6) -> None:
+        for text, font, cx, cy in _layout_lines(draw, lines, box, fn, gap=gap):
+            _draw_centered(draw, text, font, cx, cy)
+
+    # ── Clock and Hebrew time ──
+    text_left, text_right = 30, W - 30
+    text_bottom = sep_y - 8
+    if clock_style == "none":
+        # No clock: larger text, centred in the whole area above the bottom bar
+        draw_block([(l, 120) for l in time_lines],
+                   (text_left, PAD2 + 10, text_right, text_bottom), gap=16)
+    else:
+        clock_cx, clock_cy, clock_r = W // 2, PAD2 + 75, 68
+        if clock_style == "digital":
+            _draw_digital_clock(draw, (60, PAD2 + 8, W - 60, clock_cy + clock_r), h24, m, fn)
+        else:
+            _draw_analog_clock(draw, clock_cx, clock_cy, clock_r, h24, m, fn)
+        draw_block([(l, 100) for l in time_lines],
+                   (text_left, clock_cy + clock_r + 8, text_right, text_bottom), gap=12)
+
+    # ── Bottom bar ──
+    cell_top, cell_bottom = sep_y + 5, H - PAD2 - 5
 
     day_name  = _adapt_text(DAYS_HE[now.weekday()], fn)
     if jewish_date:
         jewish_date = _adapt_text(jewish_date, fn)
     if jewish_date and "\n" in jewish_date:
         date_str, year_str = jewish_date.split("\n", 1)
+        date_lines = [(day_name, 28), (date_str, 26), (year_str, 22)]
     else:
         date_str = jewish_date if jewish_date else _adapt_text(f"{now.day} {MONTHS_HE[now.month - 1]}", fn)
-        year_str = None
-    left_cx   = (bar_left + div_x) // 2
-    cell_w    = div_x - bar_left - 10
+        date_lines = [(day_name, 34), (date_str, 34)]
+    draw_block(date_lines, (bar_left + 5, cell_top, div_x - 5, cell_bottom), gap=5)
 
-    def _fit_font(text: str, start: int, minimum: int = 18,
-                  max_w: int = cell_w) -> ImageFont.FreeTypeFont:
-        f = get_font(start, fn)
-        while True:
-            bbox = draw.textbbox((0, 0), text, font=f)
-            if (bbox[2] - bbox[0]) <= max_w:
-                return f
-            cur = getattr(f, "size", start)
-            if cur <= minimum:
-                return f
-            f = get_font(cur - 2, fn)
-
-    if year_str:
-        day_font  = _fit_font(day_name, 28)
-        date_font = _fit_font(date_str, 26)
-        year_font = _fit_font(year_str, 22)
-        draw.text((left_cx, bar_cy - 26), day_name, font=day_font,  fill=0, anchor="mm")
-        draw.text((left_cx, bar_cy),      date_str, font=date_font, fill=0, anchor="mm")
-        draw.text((left_cx, bar_cy + 24), year_str, font=year_font, fill=0, anchor="mm")
-    else:
-        date_font = _fit_font(date_str, 34)
-        draw.text((left_cx, bar_cy - 14), day_name, font=font_small, fill=0, anchor="mm")
-        draw.text((left_cx, bar_cy + 14), date_str, font=date_font,  fill=0, anchor="mm")
-
-    mid_x = (div_x + div_x2) // 2
     if period_line:
-        draw.text((mid_x, bar_cy), period_line, font=font_small, fill=0, anchor="mm")
+        draw_block([(period_line, 34)], (div_x + 5, cell_top, div_x2 - 5, cell_bottom))
 
     if weather:
-        right_start = div_x2
-        right_end   = W - PAD2 - 8
-        icon_x      = right_start + (right_end - right_start) // 4
-        text_x      = right_start + 3 * (right_end - right_start) // 4
+        icon_x = div_x2 + (bar_right - div_x2) // 4
         _draw_weather_icon(draw, icon_x, bar_cy, weather.get("icon_key", "cloud"), size=34)
-        _draw_temperature(draw, text_x, bar_cy - 14, weather["temp"], get_font(40, fn), fn)
+
+        # Temperature and description share the right half of the cell, clear of the icon
+        temp = weather["temp"]
         desc = _adapt_text(weather.get("desc", ""), fn)
-        # Keep the description inside its half of the cell, clear of the icon
-        desc_w = 2 * (right_end - text_x) - 8
-        draw.text((text_x, bar_cy + 16), desc,
-                  font=_fit_font(desc, 34, minimum=16, max_w=desc_w), fill=0, anchor="mm")
+        text_box = ((div_x2 + bar_right) // 2 + 4, cell_top, bar_right - 4, cell_bottom)
+        (temp_str, temp_font, cx, temp_cy), (_, desc_font, _, desc_cy) = _layout_lines(
+            draw, [(str(temp), 40), (desc, 34)], text_box, fn, gap=5)
+        _draw_temperature(draw, cx, _middle_anchor_y(draw, temp_str, temp_font, temp_cy),
+                          temp, temp_font, fn)
+        _draw_centered(draw, desc, desc_font, cx, desc_cy)
 
     return _png_bytes(img)
 
