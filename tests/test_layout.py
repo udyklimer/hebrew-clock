@@ -43,3 +43,27 @@ def test_text_stays_inside_its_area(monkeypatch, font_name, clock_style):
                 pixels[x, y] >= 128
                 for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)
             ), f"text crosses a line near {(x0, y0, x1, y1)} at {hour}:{minute:02d}"
+
+
+# ── Fonts without nikud ───────────────────────────────
+
+_NO_NIKUD_FONT = "ankaclm-bold-webfont"
+
+
+@pytest.mark.skipif(_NO_NIKUD_FONT not in clock.VALID_FONTS, reason="font not bundled")
+@pytest.mark.parametrize("pointed, expected", [
+    ("מְעֻנָּן חֶלְקִי", "מעונן חלקי"),
+    ("בַּבֹּקֶר", "בבוקר"),
+    ("לִפְנוֹת בֹּקֶר", "לפנות בוקר"),
+    ("אַחַר הַצָּהֳרַיִם", "אחר הצהריים"),
+    ("שְׁתַּיִם וַחֲמִשִּׁים וּשְׁתַּיִם", "שתיים וחמישים ושתיים"),
+    ("שְׁתֵּים עֶשְׂרֵה וּשְׁתֵּים עֶשְׂרֵה דַּקּוֹת", "שתים עשרה ושתים עשרה דקות"),
+    ("כ״ז בְּסִיוָן\nתשפ״ו", "כ\"ז בסיוון\nתשפ\"ו"),
+    ("שֶׁבַע וָרֶבַע", "שבע ורבע"),
+])
+def test_unpointed_fonts_use_full_spelling(pointed, expected):
+    assert clock._adapt_text(pointed, _NO_NIKUD_FONT) == expected
+
+
+def test_pointed_fonts_keep_their_text():
+    assert clock._adapt_text("מְעֻנָּן", "NotoSansHebrew-Bold") == "מְעֻנָּן"

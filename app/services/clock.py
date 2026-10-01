@@ -4,6 +4,7 @@ import functools
 import io
 import math
 import random
+import re
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -113,6 +114,17 @@ def get_font(size: int, font_name: str = DEFAULT_FONT) -> ImageFont.FreeTypeFont
 _OPTIONAL_CHARS = [chr(c) for c in range(0x05B0, 0x05C8)] + ["׳", "״", "-", "°", ":"]
 # Plain replacements for missing punctuation; missing points are simply dropped
 _CHAR_FALLBACKS = {"׳": "'", "״": '"'}
+# The vowel points; a font missing any of these is treated as having no nikud
+_VOWEL_POINTS = frozenset(chr(c) for c in range(0x05B0, 0x05BC))
+# Unpointed text needs the full spelling (ktiv male) of these words
+_FULL_SPELLING = {
+    "מענן": "מעונן", "בבקר": "בבוקר", "בקר": "בוקר",
+    "בצהרים": "בצהריים", "הצהרים": "הצהריים", "וחמשים": "וחמישים",
+    "באיר": "באייר", "בסיון": "בסיוון", "בחשון": "בחשוון",
+}
+_HEBREW_WORD = re.compile("[א-ת]+")
+# "שתים" becomes "שתיים", except in "שתים עשרה"
+_SHTAYIM = re.compile("שתים(?! עשרה)")
 
 
 @functools.lru_cache(maxsize=None)
@@ -137,7 +149,12 @@ def _adapt_text(text: str, font_name: str) -> str:
     missing = _missing_chars(font_name)
     if not missing:
         return text
-    return "".join(_CHAR_FALLBACKS.get(ch, "") if ch in missing else ch for ch in text)
+    text = "".join(_CHAR_FALLBACKS.get(ch, "") if ch in missing else ch for ch in text)
+    if missing & _VOWEL_POINTS:
+        # No nikud at all: switch to the spelling used in unpointed Hebrew
+        text = _HEBREW_WORD.sub(lambda m: _FULL_SPELLING.get(m.group(), m.group()), text)
+        text = _SHTAYIM.sub("שתיים", text)
+    return text
 
 
 def _draw_temperature(draw: ImageDraw.Draw, cx: float, cy: float, temp: int,
@@ -209,20 +226,23 @@ def _draw_weather_icon(draw: ImageDraw.Draw, cx: int, cy: int,
     s = size
 
     def cloud(ox: int = 0, oy: int = 0, scale: float = 1.0) -> None:
-        w, h = int(s * 1.4 * scale), int(s * 0.7 * scale)
-        pts = []
-        for a in range(180, 361, 8):
-            pts.append((ox + cx + int(w / 2 * math.cos(math.radians(a))),
-                        oy + cy + int(h / 2 * math.sin(math.radians(a)))))
-        for centre, rx, dy in [
-            (int(w * 0.25),  int(h * 0.6  * scale), int(h * 0.2)),
-            (0,              int(h * 0.75 * scale), int(h * 0.3)),
-            (-int(w * 0.25), int(h * 0.55 * scale), int(h * 0.1)),
-        ]:
-            for a in range(0, 181, 8):
-                pts.append((ox + cx + centre + int(rx * math.cos(math.radians(a))),
-                            oy + cy - dy     + int(rx * math.sin(math.radians(a)))))
-        draw.polygon(pts, fill=255, outline=0)
+        # Puffy cloud: overlapping circles (x, y, radius in units of the icon size).
+        # Drawing them all in black, then slightly smaller in white, leaves only
+        # the outline of their union.
+        puffs = [
+            (-0.56, 0.10, 0.19), (-0.30, -0.10, 0.24), (0.05, -0.22, 0.28),
+            (0.36, -0.06, 0.22), (0.58, 0.12, 0.18),
+            (-0.34, 0.26, 0.19), (-0.04, 0.30, 0.20), (0.28, 0.27, 0.19),
+        ]
+        unit = s * scale
+        stroke = 2.5
+        for grow, fill in ((stroke, 0), (0, 255)):
+            for px, py, pr in puffs:
+                x, y, r = cx + ox + px * unit, cy + oy + py * unit, pr * unit + grow
+                draw.ellipse([x - r, y - r, x + r, y + r], fill=fill)
+        # Fill the middle, which the circles do not fully cover
+        mx, my = cx + ox, cy + oy + 0.06 * unit
+        draw.ellipse([mx - 0.5 * unit, my - 0.2 * unit, mx + 0.5 * unit, my + 0.2 * unit], fill=255)
 
     if icon_key == "sun":
         r = s // 2
@@ -251,7 +271,7 @@ def _draw_weather_icon(draw: ImageDraw.Draw, cx: int, cy: int,
     elif icon_key == "cloud_snow":
         cloud(0, -s // 5, 0.9)
         for ox in (-s // 3, -s // 8, s // 8, s // 3):
-            x, y = cx + ox, cy + s // 3
+            x, y = cx + ox, cy + s // 2 + 2
             for a in (0, 60, 120):
                 rad = math.radians(a)
                 draw.line([x - 6 * math.cos(rad), y - 6 * math.sin(rad),
