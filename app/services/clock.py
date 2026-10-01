@@ -4,6 +4,7 @@ import io
 import math
 import random
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw, ImageFont
 from loguru import logger
@@ -16,6 +17,8 @@ BASE_DIR = Path(__file__).parent.parent.parent
 # Display dimensions
 EPD_WIDTH = 800
 EPD_HEIGHT = 480
+
+ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 # Dynamic font loading from root directory
 FONTS_DIR = BASE_DIR / "fonts"
@@ -76,8 +79,8 @@ DAYS_HE = [
 
 def get_israel_time() -> datetime.datetime:
     """Calculates Israel local time with display lag offset."""
-    utc = datetime.datetime.utcnow()
-    local = utc + datetime.timedelta(hours=3 if 3 <= utc.month <= 10 else 2)
+    # Naive local time; the tz database supplies the exact DST transition dates.
+    local = datetime.datetime.now(ISRAEL_TZ).replace(tzinfo=None)
     return local + datetime.timedelta(seconds=settings.display_lag)
 
 
