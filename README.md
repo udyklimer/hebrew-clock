@@ -18,7 +18,6 @@ A Hebrew word-clock server for e-paper displays. It renders the current Israel t
 - **Blank screen mode.** Returns an all-white image.
 - **More fonts.** Fonts are picked up from the `fonts/` folder. Fonts without vowel marks (nikud) are supported: the text is drawn unvowelized instead of showing empty boxes.
 - **Persistent data.** Users and settings live in a SQLite file under `DATA_DIR` (`/data` in Docker), so they survive image updates.
-- **Safer logins.** Passwords are stored hashed and the login cookie is signed.
 - **Exact daylight-saving time**, taken from the `Asia/Jerusalem` time-zone database.
 - **New firmware** for the TRMNL DIY kit, in a separate repository: [udyklimer/trmnl-hebrew-clock](https://github.com/udyklimer/trmnl-hebrew-clock).
 
