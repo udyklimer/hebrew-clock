@@ -12,11 +12,13 @@ A Hebrew word-clock server for e-paper displays. It renders the current Israel t
 ## What this fork adds
 
 - **User accounts.** Each user registers on the website and gets their own saved clock settings.
-- **Settings page with live preview.** Font, city, calendar, clock style, sleep mode and blank screen, with a preview image that updates as you change them.
+- **Settings page with live preview.** Font, city, calendar, clock style, sleep hours, battery display and blank screen, with a preview image that updates as you change them.
 - **One URL per device.** The device asks for `/clock.png?user=<name>` and the server applies that user's saved settings, so the look of the clock is changed from the website, not on the device.
 - **Clock style.** Analog face, digital `HH:mm`, or no clock (larger text only).
+- **Sleep hours.** The night image is shown between a start and end time that each user sets.
+- **Battery indicator.** The device reports its battery voltage and the server draws an icon, a percentage or both in a top corner.
 - **Blank screen mode.** Returns an all-white image.
-- **More fonts.** Fonts are picked up from the `fonts/` folder. Fonts without vowel marks (nikud) are supported: the text is drawn unvowelized instead of showing empty boxes.
+- **More fonts.** Fonts are picked up from the `fonts/` folder. Fonts without vowel marks (nikud) are supported: the text is drawn unvowelized, in its full spelling, instead of showing empty boxes. Text is sized to stay inside its area in every font.
 - **Persistent data.** Users and settings live in a SQLite file under `DATA_DIR` (`/data` in Docker), so they survive image updates.
 - **Exact daylight-saving time**, taken from the `Asia/Jerusalem` time-zone database.
 - **New firmware** for the TRMNL DIY kit, in a separate repository: [udyklimer/trmnl-hebrew-clock](https://github.com/udyklimer/trmnl-hebrew-clock).
@@ -108,7 +110,7 @@ Other routes: `/health`, `/robots.txt`, `/sitemap.xml`, and interactive API docs
 
 Every `.ttf` file in `fonts/` appears in the settings page under its file name. To add a font, drop the file into `fonts/` and restart the server (or rebuild the image).
 
-A font does not have to be complete. If it lacks vowel marks, the geresh marks used in Hebrew dates, the minus sign, the degree sign or the colon, the server drops, replaces or draws those itself. The font does need the Hebrew letters and the digits.
+A font does not have to be complete. If it lacks vowel marks, the geresh marks used in Hebrew dates, the minus sign, the degree sign, the colon or the percent sign, the server drops, replaces or draws those itself. For a font with no vowel marks, words are written in their full unpointed spelling (for example מעונן, בבוקר, שתיים). The font does need the Hebrew letters and the digits.
 
 The bundled fonts keep their own licenses (SIL Open Font License or GNU GPL, as stated inside each font file).
 
