@@ -7,6 +7,15 @@ on:
         description: 'Image tag to publish'
         required: false
         default: 'latest'
+      platforms:
+        description: 'Platforms to build (ARM builds are emulated and take about 30 minutes)'
+        required: false
+        default: 'linux/amd64'
+        type: choice
+        options:
+          - linux/amd64
+          - linux/amd64,linux/arm64
+          - linux/amd64,linux/arm64,linux/arm/v7
 
 jobs:
   publish:
@@ -18,7 +27,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Emulation is only needed for the ARM builds
       - name: Set up QEMU
+        if: ${{ github.event.inputs.platforms != 'linux/amd64' }}
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -35,7 +46,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: ${{ github.event.inputs.platforms }}
           push: true
           build-args: |
             VERSION=${{ github.event.inputs.tag }}
@@ -43,3 +54,6 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/hebrew-clock:${{ github.event.inputs.tag }}
             ghcr.io/${{ github.repository_owner }}/hebrew-clock:latest
+          # Reuse layers from earlier runs (the Pillow build is the slow part)
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
