@@ -36,6 +36,25 @@ DEFAULT_FONT = "DavidLibre-Bold"
 VALID_CLOCK_STYLES = {"analog", "digital", "none"}
 DEFAULT_CLOCK_STYLE = "analog"
 
+# Hours (Israel time, 24h "HH:MM") between which sleep mode shows the night image
+# Battery indicator, drawn in a top corner when the device reports its battery
+VALID_BATTERY_DISPLAYS = {"none", "icon", "percent", "both"}
+DEFAULT_BATTERY_DISPLAY = "none"
+VALID_BATTERY_POSITIONS = {"left", "right"}
+DEFAULT_BATTERY_POSITION = "left"
+
+# Resting voltage of a single LiPo cell (millivolts) → charge (%), highest first
+_LIPO_CURVE = [
+    (4200, 100), (4150, 95), (4110, 90), (4080, 85), (4020, 80), (3980, 75),
+    (3950, 70), (3910, 65), (3870, 60), (3850, 55), (3840, 50), (3820, 45),
+    (3800, 40), (3790, 35), (3770, 30), (3750, 25), (3730, 20), (3710, 15),
+    (3690, 10), (3610, 5), (3270, 0),
+]
+
+DEFAULT_SLEEP_START = "22:00"
+DEFAULT_SLEEP_END = "06:00"
+_HHMM = re.compile(r"([01]\d|2[0-3]):([0-5]\d)")
+
 # ── Hebrew time tables ────────────────────────────────
 
 HOURS = [
@@ -90,6 +109,37 @@ def get_israel_time() -> datetime.datetime:
     return local + datetime.timedelta(seconds=settings.display_lag)
 
 
+def battery_percent_from_mv(millivolts: int) -> int:
+    """Estimates the charge of a LiPo cell from its voltage."""
+    if millivolts >= _LIPO_CURVE[0][0]:
+        return 100
+    for (hi_mv, hi_pct), (lo_mv, lo_pct) in zip(_LIPO_CURVE, _LIPO_CURVE[1:]):
+        if millivolts >= lo_mv:
+            return round(lo_pct + (hi_pct - lo_pct) * (millivolts - lo_mv) / (hi_mv - lo_mv))
+    return 0
+
+
+def parse_hhmm(value: str | None) -> int | None:
+    """Returns minutes after midnight for a 24h 'HH:MM' string, or None if invalid."""
+    match = _HHMM.fullmatch(value.strip()) if value else None
+    return int(match.group(1)) * 60 + int(match.group(2)) if match else None
+
+
+def in_sleep_window(start: str | None, end: str | None) -> bool:
+    """True if the current Israel time is between start and end (may span midnight).
+
+    A missing or invalid time, or start equal to end, means the whole day.
+    """
+    start_min, end_min = parse_hhmm(start), parse_hhmm(end)
+    if start_min is None or end_min is None or start_min == end_min:
+        return True
+    now = get_israel_time()
+    now_min = now.hour * 60 + now.minute
+    if start_min < end_min:
+        return start_min <= now_min < end_min
+    return now_min >= start_min or now_min < end_min
+
+
 def get_font(size: int, font_name: str = DEFAULT_FONT) -> ImageFont.FreeTypeFont:
     """Loads specified TTF font with fallback options."""
     name = font_name if font_name in VALID_FONTS else DEFAULT_FONT
@@ -111,7 +161,7 @@ def get_font(size: int, font_name: str = DEFAULT_FONT) -> ImageFont.FreeTypeFont
 
 
 # Characters a font may lack: Hebrew points (nikud), geresh/gershayim, minus, degree, colon
-_OPTIONAL_CHARS = [chr(c) for c in range(0x05B0, 0x05C8)] + ["׳", "״", "-", "°", ":"]
+_OPTIONAL_CHARS = [chr(c) for c in range(0x05B0, 0x05C8)] + ["׳", "״", "-", "°", ":", "%"]
 # Plain replacements for missing punctuation; missing points are simply dropped
 _CHAR_FALLBACKS = {"׳": "'", "״": '"'}
 # The vowel points; a font missing any of these is treated as having no nikud
@@ -387,6 +437,40 @@ def _draw_digital_clock(draw: ImageDraw.Draw, box: tuple[int, int, int, int],
     for dy in (-dot_dy, dot_dy):
         draw.ellipse([cx - dot_r, cy + dy - dot_r, cx + dot_r, cy + dy + dot_r], fill=0)
 
+def _draw_battery(draw: ImageDraw.Draw, percent: int, charging: bool, display: str,
+                  position: str, font_name: str, x_left: int, x_right: int, cy: int) -> None:
+    """Draws the battery icon and/or percentage in a top corner of the frame."""
+    body_w, body_h, nub_w, gap = 30, 15, 3, 6
+    plus = 9  # size of the hand-drawn '+' shown while charging
+
+    text = f"{percent}%" if display in ("percent", "both") else ""
+    # The percent sign is missing from some fonts; fall back to the default one
+    text_font = get_font(22, DEFAULT_FONT if "%" in _missing_chars(font_name) else font_name)
+    text_w = draw.textlength(text, font=text_font) if text else 0
+    show_icon = display in ("icon", "both")
+
+    total_w = sum(w + gap for w in (
+        body_w + nub_w if show_icon else 0, text_w, plus if charging else 0) if w) - gap
+    x = x_left if position == "left" else x_right - total_w
+
+    if show_icon:
+        top = cy - body_h / 2
+        draw.rectangle([x, top, x + body_w, top + body_h], outline=0, width=2)
+        draw.rectangle([x + body_w, cy - 4, x + body_w + nub_w, cy + 4], fill=0)
+        fill_w = round((body_w - 7) * max(0, min(100, percent)) / 100)
+        if fill_w > 0:
+            draw.rectangle([x + 4, top + 4, x + 3 + fill_w, top + body_h - 4], fill=0)
+        x += body_w + nub_w + gap
+    if text:
+        draw.text((x, _middle_anchor_y(draw, text, text_font, cy)), text,
+                  font=text_font, fill=0, anchor="lm")
+        x += text_w + gap
+    if charging:
+        mid = x + plus / 2
+        draw.line([(x, cy), (x + plus, cy)], fill=0, width=3)
+        draw.line([(mid, cy - plus / 2), (mid, cy + plus / 2)], fill=0, width=3)
+
+
 # ── Image generators ──────────────────────────────────
 
 def _generate_night_image(font_name: str) -> bytes:
@@ -435,6 +519,10 @@ def generate_clock_image(
     weather:     dict | None = None,
     jewish_date: str | None  = None,
     clock_style: str        = DEFAULT_CLOCK_STYLE,
+    battery:     int | None  = None,
+    charging:    bool       = False,
+    battery_display:  str   = DEFAULT_BATTERY_DISPLAY,
+    battery_position: str   = DEFAULT_BATTERY_POSITION,
 ) -> bytes:
     """Generates full Hebrew clock screen image."""
     fn = font_name if font_name in VALID_FONTS else DEFAULT_FONT
@@ -473,13 +561,21 @@ def generate_clock_image(
         for text, font, cx, cy in _layout_lines(draw, lines, box, fn, gap=gap):
             _draw_centered(draw, text, font, cx, cy)
 
+    # ── Battery (only when the device reported it) ──
+    show_battery = battery is not None and battery_display in ("icon", "percent", "both")
+    if show_battery:
+        _draw_battery(draw, battery, charging, battery_display, battery_position, fn,
+                      PAD2 + 12, W - PAD2 - 12, PAD2 + 20)
+
     # ── Clock and Hebrew time ──
     text_left, text_right = 30, W - 30
     text_bottom = sep_y - 8
     if clock_style == "none":
         # No clock: larger text, centred in the whole area above the bottom bar
+        # (starting below the battery indicator when there is one)
+        text_top = PAD2 + (36 if show_battery else 10)
         draw_block([(l, 120) for l in time_lines],
-                   (text_left, PAD2 + 10, text_right, text_bottom), gap=16)
+                   (text_left, text_top, text_right, text_bottom), gap=16)
     else:
         clock_cx, clock_cy, clock_r = W // 2, PAD2 + 75, 68
         if clock_style == "digital":

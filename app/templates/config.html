@@ -20,6 +20,9 @@
     .btn-save { width: 100%; padding: 0.75rem; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 600; margin-top: 0.5rem; transition: background 0.2s; }
     .btn-save:hover { background: #218838; }
     .saved-msg { background: #d1e7dd; color: #0f5132; padding: 0.6rem; border-radius: 6px; text-align: center; font-size: 0.9rem; margin-bottom: 1rem; }
+    .time-row { display: flex; gap: 0.8rem; }
+    .time-row > div { flex: 1; }
+    .time-row input { text-align: center; }
     .hint { font-size: 0.8rem; color: #888; line-height: 1.5; margin: 1rem 0 0; }
 
     .preview-col { flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
@@ -87,8 +90,47 @@
           <label for="sleeptime">מצב שינה (Sleep Mode):</label>
           <select name="sleeptime" id="sleeptime">
             <option value="0" {% if selected_sleeptime == '0' %}selected{% endif %}>כבוי (פועל רגיל)</option>
-            <option value="1" {% if selected_sleeptime == '1' %}selected{% endif %}>מופעל</option>
+            <option value="1" {% if selected_sleeptime == '1' %}selected{% endif %}>מופעל (לפי שעות)</option>
           </select>
+        </div>
+
+        <div class="form-group" id="sleep-times">
+          <div class="time-row">
+            <div>
+              <label for="sleep_start">שעת התחלה:</label>
+              <input type="text" name="sleep_start" id="sleep_start" value="{{ selected_sleep_start }}"
+                     dir="ltr" inputmode="numeric" maxlength="5" placeholder="22:00"
+                     pattern="([01][0-9]|2[0-3]):[0-5][0-9]" title="HH:MM (00:00-23:59)" required />
+            </div>
+            <div>
+              <label for="sleep_end">שעת סיום:</label>
+              <input type="text" name="sleep_end" id="sleep_end" value="{{ selected_sleep_end }}"
+                     dir="ltr" inputmode="numeric" maxlength="5" placeholder="06:00"
+                     pattern="([01][0-9]|2[0-3]):[0-5][0-9]" title="HH:MM (00:00-23:59)" required />
+            </div>
+          </div>
+          <p class="hint" style="margin-top: 0.4rem;">בין השעות האלה (שעון ישראל, 24 שעות) תוצג תמונת הלילה במקום השעון.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="battery_display">הצגת סוללה (Show Battery):</label>
+          <div class="time-row">
+            <div>
+              <select name="battery_display" id="battery_display">
+                <option value="none" {% if selected_battery_display == 'none' %}selected{% endif %}>ללא</option>
+                <option value="icon" {% if selected_battery_display == 'icon' %}selected{% endif %}>סמל</option>
+                <option value="percent" {% if selected_battery_display == 'percent' %}selected{% endif %}>אחוזים</option>
+                <option value="both" {% if selected_battery_display == 'both' %}selected{% endif %}>סמל ואחוזים</option>
+              </select>
+            </div>
+            <div>
+              <select name="battery_position" id="battery_position">
+                <option value="left" {% if selected_battery_position == 'left' %}selected{% endif %}>בצד שמאל</option>
+                <option value="right" {% if selected_battery_position == 'right' %}selected{% endif %}>בצד ימין</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint" style="margin-top: 0.4rem;">מוצג רק כשהמכשיר מדווח על מצב הסוללה. בתצוגה המקדימה מוצג ערך לדוגמה (75%).</p>
         </div>
 
         <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
@@ -138,6 +180,11 @@
         calendar:  document.getElementById('calendar').value,
         clock_style: document.getElementById('clock_style').value,
         sleeptime: document.getElementById('sleeptime').value,
+        sleep_start: document.getElementById('sleep_start').value.trim(),
+        sleep_end: document.getElementById('sleep_end').value.trim(),
+        battery_display: document.getElementById('battery_display').value,
+        battery_position: document.getElementById('battery_position').value,
+        battery: '75',  // sample value; the real one comes from the device
         blank:     document.getElementById('blank').checked ? '1' : '0',
       });
       return '/clock.png?' + p.toString();
@@ -169,10 +216,20 @@
       debounceTimer = setTimeout(updatePreview, 500);
     }
 
-    ['font', 'calendar', 'clock_style', 'sleeptime', 'blank'].forEach(id =>
+    ['font', 'calendar', 'clock_style', 'sleeptime', 'blank', 'battery_display', 'battery_position'].forEach(id =>
       document.getElementById(id).addEventListener('change', updatePreview)
     );
-    document.getElementById('location').addEventListener('input', updateDebounced);
+    ['location', 'sleep_start', 'sleep_end'].forEach(id =>
+      document.getElementById(id).addEventListener('input', updateDebounced)
+    );
+
+    // The start/end times only matter while sleep mode is on
+    function toggleSleepTimes() {
+      const on = document.getElementById('sleeptime').value === '1';
+      document.getElementById('sleep-times').classList.toggle('hidden', !on);
+    }
+    document.getElementById('sleeptime').addEventListener('change', toggleSleepTimes);
+    toggleSleepTimes();
 
     function flashCopied() {
       copyBtn.textContent = 'הועתק!';

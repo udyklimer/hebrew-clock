@@ -36,6 +36,8 @@ def test_text_stays_inside_its_area(monkeypatch, font_name, clock_style):
         png = clock.generate_clock_image(
             font_name=font_name, weather=_WEATHER,
             jewish_date=jewish_date, clock_style=clock_style,
+            battery=100, charging=True, battery_display="both",
+            battery_position="left" if jewish_date else "right",
         )
         pixels = Image.open(io.BytesIO(png)).convert("L").load()
         for x0, y0, x1, y1 in _CLEAR_STRIPS:

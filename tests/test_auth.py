@@ -135,6 +135,8 @@ def test_save_config_sanitizes_input(client):
     assert db.get_user_settings("cfguser") == {
         "font": clock.DEFAULT_FONT, "location": "Eilat", "calendar": "gregorian",
         "sleeptime": "0", "blank": "1", "clock_style": "analog",
+        "sleep_start": "22:00", "sleep_end": "06:00",
+        "battery_display": "none", "battery_position": "left",
     }
 
 
@@ -201,3 +203,106 @@ def test_clock_styles_render_differently(client):
     }
     assert len(set(images.values())) == 3
     assert client.get("/clock.png?clock_style=bogus").status_code == 200
+
+
+# ── Sleep window ──────────────────────────────────────
+
+def _at(monkeypatch, hour, minute=0):
+    monkeypatch.setattr(clock, "get_israel_time",
+                        lambda: datetime.datetime(2026, 10, 1, hour, minute))
+
+
+@pytest.mark.parametrize("start, end, hour, minute, expected", [
+    ("22:00", "06:00", 23, 0, True),    # overnight window, before midnight
+    ("22:00", "06:00", 3, 30, True),    # overnight window, after midnight
+    ("22:00", "06:00", 6, 0, False),    # end time is exclusive
+    ("22:00", "06:00", 21, 59, False),
+    ("13:00", "15:30", 15, 29, True),   # same-day window
+    ("13:00", "15:30", 15, 30, False),
+    ("08:00", "08:00", 12, 0, True),    # equal times: all day
+    (None, None, 12, 0, True),          # no window: all day
+    ("25:00", "06:00", 12, 0, True),    # invalid time: all day
+])
+def test_in_sleep_window(monkeypatch, start, end, hour, minute, expected):
+    _at(monkeypatch, hour, minute)
+    assert clock.in_sleep_window(start, end) is expected
+
+
+def test_sleep_times_are_saved_and_validated(client):
+    _register(client, "sleepuser")
+    form = {"font": clock.DEFAULT_FONT, "location": "Haifa", "calendar": "gregorian", "sleeptime": "1"}
+    client.post("/config", data={**form, "sleep_start": "23:15", "sleep_end": "07:45"})
+    cfg = db.get_user_settings("sleepuser")
+    assert (cfg["sleeptime"], cfg["sleep_start"], cfg["sleep_end"]) == ("1", "23:15", "07:45")
+    page = client.get("/config").text
+    assert 'value="23:15"' in page and 'value="07:45"' in page
+    client.post("/config", data={**form, "sleep_start": "9pm", "sleep_end": "24:00"})
+    cfg = db.get_user_settings("sleepuser")
+    assert (cfg["sleep_start"], cfg["sleep_end"]) == ("22:00", "06:00")
+
+
+def test_night_image_only_inside_window(client, monkeypatch):
+    _register(client, "nightuser")
+    db.update_user_settings("nightuser", clock.DEFAULT_FONT, "Haifa", "gregorian", "1",
+                            sleep_start="22:00", sleep_end="06:00")
+    night = clock.generate_clock_image(sleep_time=True)
+
+    _at(monkeypatch, 23)
+    assert client.get("/clock.png?user=nightuser").content == night
+    _at(monkeypatch, 12)
+    assert client.get("/clock.png?user=nightuser").content != night
+    # Sleep mode off: never the night image, even inside the window
+    db.update_user_settings("nightuser", clock.DEFAULT_FONT, "Haifa", "gregorian", "0")
+    _at(monkeypatch, 23)
+    assert client.get("/clock.png?user=nightuser").content != night
+
+
+def test_explicit_sleeptime_param(client, monkeypatch):
+    night = clock.generate_clock_image(sleep_time=True)
+    _at(monkeypatch, 12)
+    # Without a window in the request, sleeptime=1 means now (older devices)
+    assert client.get("/clock.png?sleeptime=1").content == night
+    # With a window (the settings preview), the hour decides
+    url = "/clock.png?sleeptime=1&sleep_start=22:00&sleep_end=06:00"
+    assert client.get(url).content != night
+    _at(monkeypatch, 2)
+    assert client.get(url).content == night
+
+
+# ── Battery indicator ─────────────────────────────────
+
+@pytest.mark.parametrize("millivolts, expected", [
+    (4300, 100), (4200, 100), (4063, 84), (3840, 50), (3690, 10), (3270, 0), (2500, 0),
+])
+def test_battery_percent_from_mv(millivolts, expected):
+    assert clock.battery_percent_from_mv(millivolts) == expected
+
+
+def test_battery_setting_is_saved_and_validated(client):
+    _register(client, "battuser")
+    form = {"font": clock.DEFAULT_FONT, "location": "Haifa", "calendar": "gregorian"}
+    client.post("/config", data={**form, "battery_display": "both", "battery_position": "right"})
+    cfg = db.get_user_settings("battuser")
+    assert (cfg["battery_display"], cfg["battery_position"]) == ("both", "right")
+    client.post("/config", data={**form, "battery_display": "huge", "battery_position": "middle"})
+    cfg = db.get_user_settings("battuser")
+    assert (cfg["battery_display"], cfg["battery_position"]) == ("none", "left")
+
+
+def test_battery_is_drawn_only_when_reported_and_enabled(client, monkeypatch):
+    _at(monkeypatch, 12)
+    _register(client, "battdraw")
+    base = "/clock.png?user=battdraw"
+    plain = client.get(base).content
+    # Setting is "none": a reported battery changes nothing
+    assert client.get(base + "&battery_mv=3900").content == plain
+    db.update_user_settings("battdraw", clock.DEFAULT_FONT, "Haifa", "gregorian", "0",
+                            battery_display="both", battery_position="left")
+    # Enabled but nothing reported: still nothing drawn
+    assert client.get(base).content == plain
+    shown = client.get(base + "&battery_mv=3900").content
+    assert shown != plain
+    assert client.get(base + "&battery_mv=3900&charging=1").content != shown
+    assert client.get(base + "&battery=64").content == shown  # 3900 mV is 64%
+    assert client.get(base + "&battery=64&battery_position=right").content != shown
+    assert client.get(base + "&battery=150").status_code == 422

@@ -38,7 +38,11 @@ def init_db():
                 calendar TEXT NOT NULL,
                 sleeptime TEXT NOT NULL,
                 blank TEXT DEFAULT '0',
-                clock_style TEXT DEFAULT 'analog'
+                clock_style TEXT DEFAULT 'analog',
+                sleep_start TEXT DEFAULT '22:00',
+                sleep_end TEXT DEFAULT '06:00',
+                battery_display TEXT DEFAULT 'none',
+                battery_position TEXT DEFAULT 'left'
             )
         """
         )
@@ -58,6 +62,18 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # Column already exists
+
+        # Ensure newer columns exist for existing database files
+        for column, default in (
+            ("sleep_start", "22:00"), ("sleep_end", "06:00"),
+            ("battery_display", "none"), ("battery_position", "left"),
+        ):
+            try:
+                conn.execute(
+                    f"ALTER TABLE user_settings ADD COLUMN {column} TEXT DEFAULT '{default}'"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
         # Hash any passwords left in plaintext by older versions
         for row in conn.execute("SELECT username, password FROM users").fetchall():
@@ -109,7 +125,9 @@ def get_user_settings(username: str) -> dict:
     init_db()
     with get_db() as conn:
         row = conn.execute(
-            "SELECT font, location, calendar, sleeptime, blank, clock_style FROM user_settings WHERE username = ?",
+            "SELECT font, location, calendar, sleeptime, blank, clock_style, sleep_start, sleep_end, "
+            "battery_display, battery_position "
+            "FROM user_settings WHERE username = ?",
             (username.lower(),),
         ).fetchone()
         if row:
@@ -120,6 +138,10 @@ def get_user_settings(username: str) -> dict:
                 "sleeptime": row["sleeptime"],
                 "blank": str(row["blank"]) if "blank" in row.keys() else "0",
                 "clock_style": row["clock_style"] or "analog",
+                "sleep_start": row["sleep_start"] or "22:00",
+                "sleep_end": row["sleep_end"] or "06:00",
+                "battery_display": row["battery_display"] or "none",
+                "battery_position": row["battery_position"] or "left",
             }
         return {
             "font": "DavidLibre-Bold",
@@ -128,6 +150,10 @@ def get_user_settings(username: str) -> dict:
             "sleeptime": "0",
             "blank": "0",
             "clock_style": "analog",
+            "sleep_start": "22:00",
+            "sleep_end": "06:00",
+            "battery_display": "none",
+            "battery_position": "left",
         }
 
 
@@ -139,20 +165,31 @@ def update_user_settings(
     sleeptime: str,
     blank: str = "0",
     clock_style: str = "analog",
+    sleep_start: str = "22:00",
+    sleep_end: str = "06:00",
+    battery_display: str = "none",
+    battery_position: str = "left",
 ):
     init_db()
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO user_settings (username, font, location, calendar, sleeptime, blank, clock_style)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO user_settings
+                (username, font, location, calendar, sleeptime, blank, clock_style, sleep_start, sleep_end,
+                 battery_display, battery_position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(username) DO UPDATE SET
                 font=excluded.font,
                 location=excluded.location,
                 calendar=excluded.calendar,
                 sleeptime=excluded.sleeptime,
                 blank=excluded.blank,
-                clock_style=excluded.clock_style
+                clock_style=excluded.clock_style,
+                sleep_start=excluded.sleep_start,
+                sleep_end=excluded.sleep_end,
+                battery_display=excluded.battery_display,
+                battery_position=excluded.battery_position
             """,
-            (username.lower(), font, location, calendar, sleeptime, blank, clock_style),
+            (username.lower(), font, location, calendar, sleeptime, blank, clock_style,
+             sleep_start, sleep_end, battery_display, battery_position),
         )

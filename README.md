@@ -58,7 +58,8 @@ Log in at the server's home page to reach the settings page.
 | Location | city name | Used for the weather (from [wttr.in](https://wttr.in)). |
 | Calendar | Gregorian / Jewish | The Jewish date comes from [hebcal.com](https://www.hebcal.com). |
 | Show Clock | Analog / Digital / None | Digital shows `HH:mm`; None leaves only the Hebrew text, drawn larger. |
-| Sleep Mode | off / on | On shows the night image. |
+| Sleep Mode | off / on, with start and end time | When on, the night image is shown between the two times (Israel time, 24-hour `HH:MM`; the range may cross midnight). The same start and end time means all day. |
+| Show Battery | none / icon / percentage / both, left or right | Drawn in a top corner. Appears only when the device reports its battery. |
 | Blank screen | off / on | On returns an all-white image. |
 
 The preview next to the form shows your choices immediately. The device only changes after you press **Save**.
@@ -84,7 +85,18 @@ With `user`, the saved settings of that user are applied. Any of the parameters 
 | `calendar` | `gregorian`, `jewish` | `gregorian` |
 | `clock_style` | `analog`, `digital`, `none` | `analog` |
 | `sleeptime` | `0`, `1` | `0` |
+| `sleep_start`, `sleep_end` | `HH:MM` (24-hour) | none: `sleeptime=1` given in the URL without them shows the night image at any hour |
 | `blank` | `0`, `1` | `0` |
+| `battery_display` | `none`, `icon`, `percent`, `both` | `none` |
+| `battery_position` | `left`, `right` | `left` |
+
+A device can report its battery on each request, and the server draws it according to the user's battery setting:
+
+| Parameter | Values | Meaning |
+|-----------|--------|---------|
+| `battery_mv` | millivolts, e.g. `4063` | Battery voltage; the server converts it to a percentage with a LiPo curve. |
+| `battery` | `0`–`100` | Battery percentage, if the device prefers to compute it. Takes priority over `battery_mv`. |
+| `charging` | `0`, `1` | `1` adds a `+` next to the battery. |
 
 The image endpoint needs no login: anyone who knows a user name can fetch that user's clock image.
 

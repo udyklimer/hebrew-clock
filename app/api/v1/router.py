@@ -135,6 +135,10 @@ async def config_page(
             "selected_location": user_settings.get("location", DEFAULT_LOCATION),
             "selected_calendar": user_settings.get("calendar", DEFAULT_CALENDAR),
             "selected_sleeptime": user_settings.get("sleeptime", DEFAULT_SLEEPTIME),
+            "selected_sleep_start": user_settings.get("sleep_start", clock.DEFAULT_SLEEP_START),
+            "selected_sleep_end": user_settings.get("sleep_end", clock.DEFAULT_SLEEP_END),
+            "selected_battery_display": user_settings.get("battery_display", clock.DEFAULT_BATTERY_DISPLAY),
+            "selected_battery_position": user_settings.get("battery_position", clock.DEFAULT_BATTERY_POSITION),
             "selected_blank": user_settings.get("blank", DEFAULT_BLANK) == "1",
             "selected_clock_style": user_settings.get("clock_style", clock.DEFAULT_CLOCK_STYLE),
             "saved": request.query_params.get("saved") == "1",
@@ -149,6 +153,10 @@ async def save_config(
     location: str = Form(...),
     calendar: str = Form(...),
     sleeptime: str = Form("0"),
+    sleep_start: str = Form(clock.DEFAULT_SLEEP_START),
+    sleep_end: str = Form(clock.DEFAULT_SLEEP_END),
+    battery_display: str = Form(clock.DEFAULT_BATTERY_DISPLAY),
+    battery_position: str = Form(clock.DEFAULT_BATTERY_POSITION),
     blank: Optional[str] = Form(None),
     clock_style: str = Form(clock.DEFAULT_CLOCK_STYLE),
     user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
@@ -163,10 +171,21 @@ async def save_config(
         calendar = DEFAULT_CALENDAR
     location = location.strip()[:MAX_LOCATION_LENGTH] or DEFAULT_LOCATION
     sleeptime = "1" if sleeptime == "1" else "0"
+    sleep_start = sleep_start.strip()
+    sleep_end = sleep_end.strip()
+    if clock.parse_hhmm(sleep_start) is None:
+        sleep_start = clock.DEFAULT_SLEEP_START
+    if clock.parse_hhmm(sleep_end) is None:
+        sleep_end = clock.DEFAULT_SLEEP_END
     blank_val = "1" if blank == "1" else "0"
     if clock_style not in clock.VALID_CLOCK_STYLES:
         clock_style = clock.DEFAULT_CLOCK_STYLE
-    db.update_user_settings(username, font, location, calendar, sleeptime, blank_val, clock_style)
+    if battery_display not in clock.VALID_BATTERY_DISPLAYS:
+        battery_display = clock.DEFAULT_BATTERY_DISPLAY
+    if battery_position not in clock.VALID_BATTERY_POSITIONS:
+        battery_position = clock.DEFAULT_BATTERY_POSITION
+    db.update_user_settings(username, font, location, calendar, sleeptime, blank_val, clock_style,
+                            sleep_start, sleep_end, battery_display, battery_position)
     return RedirectResponse(url="/config?saved=1", status_code=303)
 
 
@@ -194,6 +213,13 @@ async def get_clock(
     location: Optional[str] = Query(None),
     calendar: Optional[str] = Query(None),
     sleeptime: Optional[str] = Query(None),
+    sleep_start: Optional[str] = Query(None),
+    sleep_end: Optional[str] = Query(None),
+    battery: Optional[int] = Query(None, ge=0, le=100, description="Battery charge in percent"),
+    battery_mv: Optional[int] = Query(None, ge=0, le=10000, description="Battery voltage in millivolts"),
+    charging: Optional[str] = Query(None),
+    battery_display: Optional[str] = Query(None),
+    battery_position: Optional[str] = Query(None),
     blank: Optional[str] = Query(None),
     clock_style: Optional[str] = Query(None),
 ) -> Response:
@@ -221,6 +247,23 @@ async def get_clock(
     selected_loc = location or user_cfg.get("location", DEFAULT_LOCATION)
     selected_cal = calendar or user_cfg.get("calendar", DEFAULT_CALENDAR)
     selected_sleep = sleeptime or user_cfg.get("sleeptime", DEFAULT_SLEEPTIME)
+    # Sleep mode shows the night image only inside its window. An explicit
+    # sleeptime=1 with no window in the request means "now" (older devices
+    # decide the time themselves).
+    if sleeptime is None:
+        sleep_start = user_cfg.get("sleep_start")
+        sleep_end = user_cfg.get("sleep_end")
+    show_night = selected_sleep == "1" and clock.in_sleep_window(sleep_start, sleep_end)
+
+    # Battery: the device reports a percentage, or a voltage that is converted here
+    if battery is None and battery_mv is not None:
+        battery = clock.battery_percent_from_mv(battery_mv)
+    selected_batt_display = battery_display or user_cfg.get("battery_display", clock.DEFAULT_BATTERY_DISPLAY)
+    if selected_batt_display not in clock.VALID_BATTERY_DISPLAYS:
+        selected_batt_display = clock.DEFAULT_BATTERY_DISPLAY
+    selected_batt_position = battery_position or user_cfg.get("battery_position", clock.DEFAULT_BATTERY_POSITION)
+    if selected_batt_position not in clock.VALID_BATTERY_POSITIONS:
+        selected_batt_position = clock.DEFAULT_BATTERY_POSITION
     selected_style = clock_style or user_cfg.get("clock_style", clock.DEFAULT_CLOCK_STYLE)
     if selected_style not in clock.VALID_CLOCK_STYLES:
         selected_style = clock.DEFAULT_CLOCK_STYLE
@@ -235,10 +278,14 @@ async def get_clock(
     img_bytes = await run_in_threadpool(
         clock.generate_clock_image,
         font_name=selected_font,
-        sleep_time=selected_sleep == "1",
+        sleep_time=show_night,
         weather=w,
         jewish_date=jdate,
         clock_style=selected_style,
+        battery=battery,
+        charging=charging == "1",
+        battery_display=selected_batt_display,
+        battery_position=selected_batt_position,
     )
     return Response(
         content=img_bytes,
