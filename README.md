@@ -36,13 +36,19 @@ A Hebrew word-clock server for e-paper displays. It renders the current Israel t
 
 ## Display
 
-The image has three parts: an optional clock at the top, the time in Hebrew words in large text, and a bottom bar with the day and date, the time of day (*בַּבֹּקֶר*, *בָּעֶרֶב*, …) and the weather.
+The image has three parts: an optional clock at the top, the time in Hebrew words in large text, and a bottom bar with the day and date, the time of day (*בַּבֹּקֶר*, *בָּעֶרֶב*, …) and the weather. A battery indicator can be added in a top corner.
 
-![Clock with analog face](assets/screenshots/clock-main-noto-telaviv.png)
+Analog clock, with the battery shown as icon and percentage:
 
-With the Jewish calendar selected, the date cell shows the Hebrew day, month and year:
+![Analog clock with battery icon and percentage](assets/screenshots/clock-analog.png)
 
-![Jewish calendar](assets/screenshots/clock-jewish.png)
+Digital clock, with the Jewish calendar date in the bottom-left cell:
+
+![Digital clock with the Jewish calendar](assets/screenshots/clock-digital-jewish.png)
+
+No clock, only the text, in a font without nikud (the words switch to their full spelling). The `+` after the percentage means the device is charging:
+
+![Text only, in a font without nikud](assets/screenshots/clock-text-only.png)
 
 Sleep mode shows a night image instead of the clock:
 
@@ -53,6 +59,8 @@ Sleep mode shows a night image instead of the clock:
 ## Settings
 
 Log in at the server's home page to reach the settings page.
+
+![Settings page with live preview](assets/screenshots/settings-page.png)
 
 | Setting | Options | Notes |
 |---------|---------|-------|
