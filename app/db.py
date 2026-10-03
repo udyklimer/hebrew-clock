@@ -1,3 +1,4 @@
+import datetime
 import sqlite3
 import re
 
@@ -72,6 +73,13 @@ def init_db():
                 conn.execute(
                     f"ALTER TABLE user_settings ADD COLUMN {column} TEXT DEFAULT '{default}'"
                 )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+        # What the user's device last reported (no default: empty until it does)
+        for column in ("device_fw", "device_seen"):
+            try:
+                conn.execute(f"ALTER TABLE user_settings ADD COLUMN {column} TEXT")
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
@@ -193,3 +201,28 @@ def update_user_settings(
             (username.lower(), font, location, calendar, sleeptime, blank, clock_style,
              sleep_start, sleep_end, battery_display, battery_position),
         )
+
+
+def record_device_firmware(username: str, version: str) -> None:
+    """Stores the firmware version a user's device reported, and when."""
+    init_db()
+    seen = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE user_settings SET device_fw = ?, device_seen = ? WHERE username = ?",
+            (version.strip()[:32], seen, username.lower()),
+        )
+
+
+def get_device_firmware(username: str) -> tuple[str | None, datetime.datetime | None]:
+    """Returns the firmware version the user's device last reported and when (UTC)."""
+    init_db()
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT device_fw, device_seen FROM user_settings WHERE username = ?",
+            (username.lower(),),
+        ).fetchone()
+    if not row or not row["device_fw"]:
+        return None, None
+    seen = datetime.datetime.fromisoformat(row["device_seen"]) if row["device_seen"] else None
+    return row["device_fw"], seen

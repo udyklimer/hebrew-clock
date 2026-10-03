@@ -69,7 +69,7 @@ async def _fetch_latest_release(client: httpx.AsyncClient) -> dict | None:
     }
 
 
-async def _latest_release(client: httpx.AsyncClient) -> dict | None:
+async def latest_release(client: httpx.AsyncClient) -> dict | None:
     """The latest release, checked at most once an hour."""
     now = datetime.datetime.utcnow()
     checked = _latest.get("time")
@@ -140,7 +140,7 @@ async def check_update(device_version: str | None, client: httpx.AsyncClient) ->
     current = parse_version(device_version)
     if current is None or not settings.firmware_repo:
         return {}
-    release = await _latest_release(client)
+    release = await latest_release(client)
     if not release or parse_version(release["version"]) <= current:
         return {}
     if not await _cached_files(release, client):

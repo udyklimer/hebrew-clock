@@ -127,6 +127,18 @@ async def config_page(
         return RedirectResponse(url="/", status_code=303)
     
     user_settings = db.get_user_settings(username)
+
+    # Firmware: what the device last reported, and the latest release
+    device_fw, device_seen = db.get_device_firmware(username)
+    if device_seen:
+        device_seen = device_seen.astimezone(clock.ISRAEL_TZ).strftime("%d/%m/%Y %H:%M")
+    release = await firmware_svc.latest_release(request.app.state.http_client)
+    latest_fw = release["version"] if release else None
+    device_parsed = firmware_svc.parse_version(device_fw)
+    update_waiting = bool(
+        latest_fw and device_parsed and firmware_svc.parse_version(latest_fw) > device_parsed
+    )
+
     return _TEMPLATES.TemplateResponse(
         request,
         "config.html",
@@ -144,6 +156,10 @@ async def config_page(
             "selected_blank": user_settings.get("blank", DEFAULT_BLANK) == "1",
             "selected_clock_style": user_settings.get("clock_style", clock.DEFAULT_CLOCK_STYLE),
             "saved": request.query_params.get("saved") == "1",
+            "device_fw": device_fw,
+            "device_seen": device_seen,
+            "latest_fw": latest_fw,
+            "update_waiting": update_waiting,
             "gtag_id": settings.gtag_id, 
         }
     )
@@ -233,6 +249,8 @@ async def get_clock(
     # Priority: explicit query params > DB settings for user > fallback defaults
     if user:
         user_cfg = db.get_user_settings(user)
+        if fw:
+            db.record_device_firmware(user, fw)
     else:
         user_cfg = {
             "font": DEFAULT_FONT,

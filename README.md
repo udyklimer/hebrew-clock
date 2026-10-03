@@ -114,6 +114,8 @@ A device can report its firmware version with `fw=<version>` (e.g. `fw=1.4.0`) o
 | `X-Firmware-Sha256` | SHA-256 of the file, as hex. |
 | `X-Firmware-Signature` | Base64 of the release's ECDSA P-256 signature of the file. |
 
+The version each user's device last reported, and the latest available release, are shown on that user's settings page.
+
 Each release must be tagged `v<major>.<minor>.<patch>` and have two assets: `firmware.bin` and `firmware.bin.sig` (the DER signature). The server downloads both into `DATA_DIR/firmware/` the first time a device needs them. The device checks the signature against the public key built into it, so the server never holds the signing key and cannot make a device accept firmware that was not signed with it.
 
 Other routes: `/health`, `/robots.txt`, `/sitemap.xml`, and interactive API docs at `/api/docs`.

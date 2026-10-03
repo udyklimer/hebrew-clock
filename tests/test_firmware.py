@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app import db
 from app.services import firmware
 
 FIRMWARE = b"\xe9" + b"fake firmware image" * 100
@@ -107,3 +108,41 @@ def test_github_failure_does_not_break_the_image(client, monkeypatch):
 @pytest.mark.parametrize("path", ["/firmware/9.9.9.bin", "/firmware/..%2Fclock.db.bin", "/firmware/abc.bin"])
 def test_firmware_download_rejects_unknown_files(client, path):
     assert client.get(path).status_code == 404
+
+
+# ── Settings page ─────────────────────────────────────
+
+def _login(client, username):
+    client.cookies.clear()
+    client.post("/register", data={"username": username, "password": "correct-horse"})
+
+
+def test_config_page_before_device_reports(client, release):
+    _login(client, "fwfresh")
+    page = client.get("/config").text
+    assert "המכשיר עדיין לא דיווח" in page
+    assert "1.5.0" in page  # latest available
+
+
+def test_config_page_shows_device_version_and_pending_update(client, release):
+    _login(client, "fwold")
+    client.get("/clock.png?user=fwold&fw=1.4.0")
+    page = client.get("/config").text
+    assert ">1.4.0<" in page
+    assert "דיווח אחרון" in page
+    assert "עדכון ממתין" in page
+
+
+def test_config_page_up_to_date_device(client, release):
+    _login(client, "fwnew")
+    client.get("/clock.png?user=fwnew&fw=1.5.0")
+    page = client.get("/config").text
+    assert ">1.5.0<" in page
+    assert "עדכון ממתין" not in page
+
+
+def test_preview_requests_do_not_overwrite_device_version(client, release):
+    _login(client, "fwprev")
+    client.get("/clock.png?user=fwprev&fw=1.4.0")
+    client.get("/clock.png?user=fwprev&font=DavidLibre-Bold")  # preview: no fw
+    assert db.get_device_firmware("fwprev")[0] == "1.4.0"
