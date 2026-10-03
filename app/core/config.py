@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     # Key used to sign session cookies. If SECRET_KEY is unset, a random key is
     # generated once and stored in DATA_DIR/.secret_key.
     secret_key: str | None = None
+    # GitHub repo whose releases provide device firmware updates ("" disables them)
+    firmware_repo: str = "udyklimer/trmnl-hebrew-clock"
+    # Only needed if that repo is private
+    firmware_github_token: str | None = None
     gtag_id: str | None = None  # set GTAG_ID env var to enable Google Analytics
     # Trusted proxy IP list for X-Forwarded-Proto. Set FORWARDED_ALLOW_IPS to a
     # comma-separated CIDR/IP list (e.g. "10.0.0.0/8,127.0.0.1") to restrict which

@@ -1,9 +1,10 @@
+import re
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Request, Query, Form, Cookie, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import settings
@@ -16,6 +17,7 @@ from app.core.security import (
 )
 from app.services import clock, weather as weather_svc, jewish_cal as jewish_cal_svc
 from app.services import seo as seo_svc
+from app.services import firmware as firmware_svc
 from app import db
 
 router = APIRouter()
@@ -222,7 +224,12 @@ async def get_clock(
     battery_position: Optional[str] = Query(None),
     blank: Optional[str] = Query(None),
     clock_style: Optional[str] = Query(None),
+    fw: Optional[str] = Query(None, description="Firmware version of the device, e.g. 1.4.0"),
 ) -> Response:
+    # Offer a firmware update when the device reports an older version
+    headers = {"Cache-Control": "no-cache"}
+    headers.update(await firmware_svc.check_update(fw, request.app.state.http_client))
+
     # Priority: explicit query params > DB settings for user > fallback defaults
     if user:
         user_cfg = db.get_user_settings(user)
@@ -241,7 +248,7 @@ async def get_clock(
     # Return a blank image if blank mode is enabled
     if selected_blank == "1":
         img_bytes = await run_in_threadpool(clock.generate_blank_image)
-        return Response(content=img_bytes, media_type="image/png", headers={"Cache-Control": "no-cache"})
+        return Response(content=img_bytes, media_type="image/png", headers=headers)
 
     selected_font = font or user_cfg.get("font", DEFAULT_FONT)
     selected_loc = location or user_cfg.get("location", DEFAULT_LOCATION)
@@ -290,5 +297,16 @@ async def get_clock(
     return Response(
         content=img_bytes,
         media_type="image/png",
-        headers={"Cache-Control": "no-cache"},
+        headers=headers,
     )
+
+
+@router.get("/firmware/{version}.bin", include_in_schema=False)
+async def get_firmware(version: str) -> Response:
+    """Serves a firmware image cached from the firmware repo's releases."""
+    if firmware_svc.parse_version(version) is None or not re.fullmatch(r"[0-9.]+", version):
+        return PlainTextResponse("Not found", status_code=404)
+    path = firmware_svc.firmware_dir() / f"{version}.bin"
+    if not path.exists():
+        return PlainTextResponse("Not found", status_code=404)
+    return FileResponse(path, media_type="application/octet-stream")

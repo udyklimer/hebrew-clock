@@ -102,6 +102,20 @@ A device can report its battery on each request, and the server draws it accordi
 
 The image endpoint needs no login: anyone who knows a user name can fetch that user's clock image.
 
+### Firmware updates
+
+A device can report its firmware version with `fw=<version>` (e.g. `fw=1.4.0`) on the image request. The server checks the latest release of the firmware repository on GitHub (at most once an hour). If it is newer, the image response carries these headers and the device can update itself:
+
+| Header | Meaning |
+|--------|---------|
+| `X-Firmware-Version` | The newer version, e.g. `1.5.0`. |
+| `X-Firmware-Url` | Where to download it on this server: `/firmware/<version>.bin`. |
+| `X-Firmware-Size` | Size in bytes. |
+| `X-Firmware-Sha256` | SHA-256 of the file, as hex. |
+| `X-Firmware-Signature` | Base64 of the release's ECDSA P-256 signature of the file. |
+
+Each release must be tagged `v<major>.<minor>.<patch>` and have two assets: `firmware.bin` and `firmware.bin.sig` (the DER signature). The server downloads both into `DATA_DIR/firmware/` the first time a device needs them. The device checks the signature against the public key built into it, so the server never holds the signing key and cannot make a device accept firmware that was not signed with it.
+
 Other routes: `/health`, `/robots.txt`, `/sitemap.xml`, and interactive API docs at `/api/docs`.
 
 ---
@@ -154,6 +168,8 @@ In the app's settings, under **Storage → Host Path Volumes**, add a dataset in
 | `PORT` | `8765` | Port used when the app is started with `python -m app.main`. The Docker image always listens on 8765. |
 | `FONT_DIR` | project root | Folder containing `sleeping.png`, the picture used in the night image. |
 | `WTTR_URL` | `https://wttr.in` | Base URL of the weather service. |
+| `FIRMWARE_REPO` | `udyklimer/trmnl-hebrew-clock` | GitHub repository whose releases provide device firmware. Set it to an empty value to turn updates off. |
+| `FIRMWARE_GITHUB_TOKEN` | unset | GitHub token, only needed if the firmware repository is private. |
 | `GTAG_ID` | unset | Google Analytics ID. |
 | `FORWARDED_ALLOW_IPS` | `*` | Proxies trusted for the `X-Forwarded-Proto` header. Narrow this when self-hosting behind a known proxy. |
 
