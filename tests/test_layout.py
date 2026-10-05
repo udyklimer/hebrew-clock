@@ -69,3 +69,18 @@ def test_unpointed_fonts_use_full_spelling(pointed, expected):
 
 def test_pointed_fonts_keep_their_text():
     assert clock._adapt_text("מְעֻנָּן", "NotoSansHebrew-Bold") == "מְעֻנָּן"
+
+
+# ── Minute phrases ────────────────────────────────────
+
+@pytest.mark.parametrize("minute, expected", [
+    (20, "שֶׁבַע וְעֶשְׂרִים דַקּוֹת"),    # up to :20 the minutes start with "ו"
+    (21, "שֶׁבַע עֶשְׂרִים וְאַחַת"),       # from :21 on they follow the hour directly
+    (15, "שֶׁבַע וָרֶבַע"),
+    (30, "שֶׁבַע וָחֵצִי"),
+    (38, "שֶׁבַע שְׁלוֹשִׁים וּשְׁמוֹנֶה"),
+    (59, "שֶׁבַע חֲמִשִּׁים וְתֵשַׁע"),
+])
+def test_minute_phrases(minute, expected):
+    lines = clock._get_time_lines(19, minute)
+    assert " ".join(l for l in lines if l not in clock.PERIOD_WORDS) == expected
