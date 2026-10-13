@@ -43,7 +43,8 @@ def init_db():
                 sleep_start TEXT DEFAULT '22:00',
                 sleep_end TEXT DEFAULT '06:00',
                 battery_display TEXT DEFAULT 'none',
-                battery_position TEXT DEFAULT 'left'
+                battery_position TEXT DEFAULT 'left',
+                batch_minutes INTEGER DEFAULT 1
             )
         """
         )
@@ -75,6 +76,12 @@ def init_db():
                 )
             except sqlite3.OperationalError:
                 pass  # Column already exists
+
+        # Battery save mode: minutes of images fetched per connection
+        try:
+            conn.execute("ALTER TABLE user_settings ADD COLUMN batch_minutes INTEGER DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # What the user's device last reported (no default: empty until it does)
         for column in ("device_fw", "device_seen"):
@@ -134,7 +141,7 @@ def get_user_settings(username: str) -> dict:
     with get_db() as conn:
         row = conn.execute(
             "SELECT font, location, calendar, sleeptime, blank, clock_style, sleep_start, sleep_end, "
-            "battery_display, battery_position "
+            "battery_display, battery_position, batch_minutes "
             "FROM user_settings WHERE username = ?",
             (username.lower(),),
         ).fetchone()
@@ -150,6 +157,7 @@ def get_user_settings(username: str) -> dict:
                 "sleep_end": row["sleep_end"] or "06:00",
                 "battery_display": row["battery_display"] or "none",
                 "battery_position": row["battery_position"] or "left",
+                "batch_minutes": int(row["batch_minutes"] or 1),
             }
         return {
             "font": "DavidLibre-Bold",
@@ -162,6 +170,7 @@ def get_user_settings(username: str) -> dict:
             "sleep_end": "06:00",
             "battery_display": "none",
             "battery_position": "left",
+            "batch_minutes": 1,
         }
 
 
@@ -177,6 +186,7 @@ def update_user_settings(
     sleep_end: str = "06:00",
     battery_display: str = "none",
     battery_position: str = "left",
+    batch_minutes: int = 1,
 ):
     init_db()
     with get_db() as conn:
@@ -184,8 +194,8 @@ def update_user_settings(
             """
             INSERT INTO user_settings
                 (username, font, location, calendar, sleeptime, blank, clock_style, sleep_start, sleep_end,
-                 battery_display, battery_position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 battery_display, battery_position, batch_minutes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(username) DO UPDATE SET
                 font=excluded.font,
                 location=excluded.location,
@@ -196,10 +206,11 @@ def update_user_settings(
                 sleep_start=excluded.sleep_start,
                 sleep_end=excluded.sleep_end,
                 battery_display=excluded.battery_display,
-                battery_position=excluded.battery_position
+                battery_position=excluded.battery_position,
+                batch_minutes=excluded.batch_minutes
             """,
             (username.lower(), font, location, calendar, sleeptime, blank, clock_style,
-             sleep_start, sleep_end, battery_display, battery_position),
+             sleep_start, sleep_end, battery_display, battery_position, batch_minutes),
         )
 
 

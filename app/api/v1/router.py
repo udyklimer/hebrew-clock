@@ -1,4 +1,5 @@
 import re
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +28,8 @@ DEFAULT_LOCATION = "Haifa"
 DEFAULT_CALENDAR = "gregorian"
 DEFAULT_SLEEPTIME = "0"
 DEFAULT_BLANK = "0"
+# How far from the current time a requested minute (at=) may be, in seconds
+AT_PAST_LIMIT, AT_FUTURE_LIMIT = 10 * 60, 30 * 60
 VALID_CALENDARS = {"gregorian", "jewish"}
 MAX_LOCATION_LENGTH = 64
 
@@ -153,6 +156,9 @@ async def config_page(
             "selected_sleep_end": user_settings.get("sleep_end", clock.DEFAULT_SLEEP_END),
             "selected_battery_display": user_settings.get("battery_display", clock.DEFAULT_BATTERY_DISPLAY),
             "selected_battery_position": user_settings.get("battery_position", clock.DEFAULT_BATTERY_POSITION),
+            "selected_batch_minutes": user_settings.get("batch_minutes", clock.DEFAULT_BATCH_MINUTES),
+            "min_batch_minutes": clock.MIN_BATCH_MINUTES,
+            "max_batch_minutes": clock.MAX_BATCH_MINUTES,
             "selected_blank": user_settings.get("blank", DEFAULT_BLANK) == "1",
             "selected_clock_style": user_settings.get("clock_style", clock.DEFAULT_CLOCK_STYLE),
             "saved": request.query_params.get("saved") == "1",
@@ -175,6 +181,7 @@ async def save_config(
     sleep_end: str = Form(clock.DEFAULT_SLEEP_END),
     battery_display: str = Form(clock.DEFAULT_BATTERY_DISPLAY),
     battery_position: str = Form(clock.DEFAULT_BATTERY_POSITION),
+    batch_minutes: int = Form(clock.DEFAULT_BATCH_MINUTES),
     blank: Optional[str] = Form(None),
     clock_style: str = Form(clock.DEFAULT_CLOCK_STYLE),
     user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
@@ -203,7 +210,8 @@ async def save_config(
     if battery_position not in clock.VALID_BATTERY_POSITIONS:
         battery_position = clock.DEFAULT_BATTERY_POSITION
     db.update_user_settings(username, font, location, calendar, sleeptime, blank_val, clock_style,
-                            sleep_start, sleep_end, battery_display, battery_position)
+                            sleep_start, sleep_end, battery_display, battery_position,
+                            min(clock.MAX_BATCH_MINUTES, max(clock.MIN_BATCH_MINUTES, batch_minutes)))
     return RedirectResponse(url="/config?saved=1", status_code=303)
 
 
@@ -241,7 +249,18 @@ async def get_clock(
     blank: Optional[str] = Query(None),
     clock_style: Optional[str] = Query(None),
     fw: Optional[str] = Query(None, description="Firmware version of the device, e.g. 1.4.0"),
+    at: Optional[int] = Query(None, description="Unix time of the minute to render (for batch fetching)"),
 ) -> Response:
+    # The minute to render: a requested one (battery save mode fetches several
+    # minutes ahead), or now plus the display lag
+    if at is not None:
+        offset = at - time.time()
+        if not -AT_PAST_LIMIT <= offset <= AT_FUTURE_LIMIT:
+            return PlainTextResponse("at is too far from the current time", status_code=422)
+        now = clock.israel_time_at(at)
+    else:
+        now = clock.get_israel_time()
+
     # Offer a firmware update when the device reports an older version
     headers = {"Cache-Control": "no-cache"}
     headers.update(await firmware_svc.check_update(fw, request.app.state.http_client))
@@ -260,6 +279,8 @@ async def get_clock(
             "blank": DEFAULT_BLANK,
             "clock_style": clock.DEFAULT_CLOCK_STYLE,
         }
+    # Battery save mode: how many minutes of images the device should fetch at once
+    headers["X-Batch-Minutes"] = str(user_cfg.get("batch_minutes", clock.DEFAULT_BATCH_MINUTES))
 
     selected_blank = blank if blank is not None else user_cfg.get("blank", DEFAULT_BLANK)
 
@@ -278,7 +299,7 @@ async def get_clock(
     if sleeptime is None:
         sleep_start = user_cfg.get("sleep_start")
         sleep_end = user_cfg.get("sleep_end")
-    show_night = selected_sleep == "1" and clock.in_sleep_window(sleep_start, sleep_end)
+    show_night = selected_sleep == "1" and clock.in_sleep_window(sleep_start, sleep_end, now)
 
     # Battery: the device reports a percentage, or a voltage that is converted here
     if battery is None and battery_mv is not None:
@@ -297,7 +318,7 @@ async def get_clock(
 
     jdate = None
     if selected_cal == "jewish":
-        today = clock.get_israel_time().date()
+        today = now.date()
         jdate = await jewish_cal_svc.get_jewish_date(today, request.app.state.http_client)
 
     img_bytes = await run_in_threadpool(
@@ -311,6 +332,7 @@ async def get_clock(
         charging=charging == "1",
         battery_display=selected_batt_display,
         battery_position=selected_batt_position,
+        now=now,
     )
     return Response(
         content=img_bytes,

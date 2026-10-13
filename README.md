@@ -70,6 +70,7 @@ Log in at the server's home page to reach the settings page.
 | Show Clock | Analog / Digital / None | Digital shows `HH:mm`; None leaves only the Hebrew text, drawn larger. |
 | Sleep Mode | off / on, with start and end time | When on, the night image is shown between the two times (Israel time, 24-hour `HH:MM`; the range may cross midnight). The same start and end time means all day. |
 | Show Battery | none / icon / percentage / both, left or right | Drawn in a top corner. Appears only when the device reports its battery. |
+| Battery Save | 1–15 minutes | How often the device connects. With N above 1 it downloads the images for the next N minutes at once and shows them one per minute, so it uses Wi-Fi N times less. Settings, weather and battery level then update only every N minutes. |
 | Blank screen | off / on | On returns an all-white image. |
 
 The preview next to the form shows your choices immediately. The device only changes after you press **Save**.
@@ -99,6 +100,14 @@ With `user`, the saved settings of that user are applied. Any of the parameters 
 | `blank` | `0`, `1` | `0` |
 | `battery_display` | `none`, `icon`, `percent`, `both` | `none` |
 | `battery_position` | `left`, `right` | `left` |
+
+For battery save mode, a device can ask for a specific minute instead of the current one:
+
+| Parameter | Values | Meaning |
+|-----------|--------|---------|
+| `at` | Unix time in seconds | Render the clock for the minute containing this moment. Must be within 10 minutes before and 30 minutes after the server's time. |
+
+Every image response carries `X-Batch-Minutes: <N>`, the user's battery save setting, so the device knows how many minutes to fetch per connection.
 
 A device can report its battery on each request, and the server draws it according to the user's battery setting:
 

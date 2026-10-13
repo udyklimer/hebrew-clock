@@ -8,6 +8,7 @@ from app import db
 from app.core import security
 from app.main import app
 from app.services import clock
+from app.api.v1 import router as router_module
 
 PASSWORD = "correct-horse"
 
@@ -137,6 +138,7 @@ def test_save_config_sanitizes_input(client):
         "sleeptime": "0", "blank": "1", "clock_style": "analog",
         "sleep_start": "22:00", "sleep_end": "06:00",
         "battery_display": "none", "battery_position": "left",
+        "batch_minutes": 1,
     }
 
 
@@ -306,3 +308,66 @@ def test_battery_is_drawn_only_when_reported_and_enabled(client, monkeypatch):
     assert client.get(base + "&battery=64").content == shown  # 3900 mV is 64%
     assert client.get(base + "&battery=64&battery_position=right").content != shown
     assert client.get(base + "&battery=150").status_code == 422
+
+
+# ── Battery save mode (batch fetching) ───────────────
+
+def test_batch_minutes_saved_and_clamped(client):
+    _register(client, "batchuser")
+    form = {"font": clock.DEFAULT_FONT, "location": "Haifa", "calendar": "gregorian"}
+    client.post("/config", data={**form, "batch_minutes": "10"})
+    assert db.get_user_settings("batchuser")["batch_minutes"] == 10
+    assert 'value="10"' in client.get("/config").text
+    client.post("/config", data={**form, "batch_minutes": "99"})
+    assert db.get_user_settings("batchuser")["batch_minutes"] == 15
+    client.post("/config", data={**form, "batch_minutes": "0"})
+    assert db.get_user_settings("batchuser")["batch_minutes"] == 1
+
+
+def test_batch_minutes_header(client):
+    _register(client, "batchhdr")
+    assert client.get("/clock.png").headers["x-batch-minutes"] == "1"
+    db.update_user_settings("batchhdr", clock.DEFAULT_FONT, "Haifa", "gregorian", "0", batch_minutes=12)
+    assert client.get("/clock.png?user=batchhdr").headers["x-batch-minutes"] == "12"
+
+
+def _unix(year, month, day, hour, minute):
+    return int(datetime.datetime(year, month, day, hour, minute, tzinfo=clock.ISRAEL_TZ).timestamp())
+
+
+def test_at_renders_the_requested_minute(client, monkeypatch):
+    target = _unix(2026, 10, 6, 19, 30)
+    monkeypatch.setattr(router_module.time, "time", lambda: target - 300)
+    monkeypatch.setattr(router_module.weather_svc, "get_weather", _no_weather)
+    expected = clock.generate_clock_image(
+        font_name=clock.DEFAULT_FONT, weather=None,
+        now=datetime.datetime(2026, 10, 6, 19, 30),
+    )
+    resp = client.get(f"/clock.png?at={target + 42}")  # seconds are ignored
+    assert resp.status_code == 200
+    assert resp.content == expected
+    other = client.get(f"/clock.png?at={target + 60}").content
+    assert other != expected
+
+
+async def _no_weather(location, http_client):
+    return None
+
+
+def test_at_too_far_is_rejected(client, monkeypatch):
+    now = _unix(2026, 10, 6, 19, 30)
+    monkeypatch.setattr(router_module.time, "time", lambda: now)
+    assert client.get(f"/clock.png?at={now + 29 * 60}").status_code == 200
+    assert client.get(f"/clock.png?at={now + 31 * 60}").status_code == 422
+    assert client.get(f"/clock.png?at={now - 11 * 60}").status_code == 422
+
+
+def test_sleep_window_follows_requested_minute(client, monkeypatch):
+    _register(client, "batchnight")
+    db.update_user_settings("batchnight", clock.DEFAULT_FONT, "Haifa", "gregorian", "1",
+                            sleep_start="22:00", sleep_end="06:00")
+    night = clock.generate_clock_image(sleep_time=True)
+    before = _unix(2026, 10, 6, 21, 55)
+    monkeypatch.setattr(router_module.time, "time", lambda: before)
+    assert client.get(f"/clock.png?user=batchnight&at={before}").content != night
+    assert client.get(f"/clock.png?user=batchnight&at={before + 5 * 60}").content == night

@@ -51,6 +51,10 @@ _LIPO_CURVE = [
     (3690, 10), (3610, 5), (3270, 0),
 ]
 
+# Battery save mode: the device fetches this many minutes of images per connection
+MIN_BATCH_MINUTES, MAX_BATCH_MINUTES = 1, 15
+DEFAULT_BATCH_MINUTES = 1
+
 DEFAULT_SLEEP_START = "22:00"
 DEFAULT_SLEEP_END = "06:00"
 _HHMM = re.compile(r"([01]\d|2[0-3]):([0-5]\d)")
@@ -125,7 +129,14 @@ def parse_hhmm(value: str | None) -> int | None:
     return int(match.group(1)) * 60 + int(match.group(2)) if match else None
 
 
-def in_sleep_window(start: str | None, end: str | None) -> bool:
+def israel_time_at(unix_seconds: int) -> datetime.datetime:
+    """Israel local time (naive) of a Unix timestamp, rounded down to the minute."""
+    moment = datetime.datetime.fromtimestamp(unix_seconds, ISRAEL_TZ)
+    return moment.replace(second=0, microsecond=0, tzinfo=None)
+
+
+def in_sleep_window(start: str | None, end: str | None,
+                    now: datetime.datetime | None = None) -> bool:
     """True if the current Israel time is between start and end (may span midnight).
 
     A missing or invalid time, or start equal to end, means the whole day.
@@ -133,7 +144,7 @@ def in_sleep_window(start: str | None, end: str | None) -> bool:
     start_min, end_min = parse_hhmm(start), parse_hhmm(end)
     if start_min is None or end_min is None or start_min == end_min:
         return True
-    now = get_israel_time()
+    now = now or get_israel_time()
     now_min = now.hour * 60 + now.minute
     if start_min < end_min:
         return start_min <= now_min < end_min
@@ -523,6 +534,7 @@ def generate_clock_image(
     charging:    bool       = False,
     battery_display:  str   = DEFAULT_BATTERY_DISPLAY,
     battery_position: str   = DEFAULT_BATTERY_POSITION,
+    now: datetime.datetime | None = None,
 ) -> bytes:
     """Generates full Hebrew clock screen image."""
     fn = font_name if font_name in VALID_FONTS else DEFAULT_FONT
@@ -530,7 +542,7 @@ def generate_clock_image(
     if sleep_time:
         return _generate_night_image(fn)
 
-    now  = get_israel_time()
+    now  = now or get_israel_time()
     h24, m = now.hour, now.minute
 
     W, H = EPD_WIDTH, EPD_HEIGHT
