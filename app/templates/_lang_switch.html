@@ -1,0 +1,24 @@
+{# Page language switch: Israeli and British flags; the current one is highlighted #}
+<nav class="lang-switch" aria-label="{{ t.switch_language }}">
+  <a href="/ui-lang/he?next={{ next_path }}" class="flag{% if ui_lang == 'he' %} current{% endif %}" title="עברית" lang="he">
+    <svg viewBox="0 0 22 16" aria-hidden="true">
+      <rect width="22" height="16" fill="#fff"/>
+      <rect y="1.5" width="22" height="2.2" fill="#0038b8"/>
+      <rect y="12.3" width="22" height="2.2" fill="#0038b8"/>
+      <path d="M11 4.6 L14 9.8 L8 9.8 Z M11 11.4 L8 6.2 L14 6.2 Z" fill="none" stroke="#0038b8" stroke-width="0.8"/>
+    </svg>
+  </a>
+  <a href="/ui-lang/en?next={{ next_path }}" class="flag{% if ui_lang == 'en' %} current{% endif %}" title="English" lang="en">
+    <svg viewBox="0 0 60 30" aria-hidden="true">
+      <clipPath id="uk-s"><path d="M0,0 v30 h60 v-30 z"/></clipPath>
+      <clipPath id="uk-t"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath>
+      <g clip-path="url(#uk-s)">
+        <path d="M0,0 v30 h60 v-30 z" fill="#012169"/>
+        <path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/>
+        <path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#uk-t)" stroke="#C8102E" stroke-width="4"/>
+        <path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/>
+        <path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/>
+      </g>
+    </svg>
+  </a>
+</nav>

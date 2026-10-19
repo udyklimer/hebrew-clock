@@ -44,7 +44,8 @@ def init_db():
                 sleep_end TEXT DEFAULT '06:00',
                 battery_display TEXT DEFAULT 'none',
                 battery_position TEXT DEFAULT 'left',
-                batch_minutes INTEGER DEFAULT 1
+                batch_minutes INTEGER DEFAULT 1,
+                language TEXT DEFAULT 'he'
             )
         """
         )
@@ -69,6 +70,7 @@ def init_db():
         for column, default in (
             ("sleep_start", "22:00"), ("sleep_end", "06:00"),
             ("battery_display", "none"), ("battery_position", "left"),
+            ("language", "he"),
         ):
             try:
                 conn.execute(
@@ -141,7 +143,7 @@ def get_user_settings(username: str) -> dict:
     with get_db() as conn:
         row = conn.execute(
             "SELECT font, location, calendar, sleeptime, blank, clock_style, sleep_start, sleep_end, "
-            "battery_display, battery_position, batch_minutes "
+            "battery_display, battery_position, batch_minutes, language "
             "FROM user_settings WHERE username = ?",
             (username.lower(),),
         ).fetchone()
@@ -158,6 +160,7 @@ def get_user_settings(username: str) -> dict:
                 "battery_display": row["battery_display"] or "none",
                 "battery_position": row["battery_position"] or "left",
                 "batch_minutes": int(row["batch_minutes"] or 1),
+                "language": row["language"] or "he",
             }
         return {
             "font": "DavidLibre-Bold",
@@ -171,6 +174,7 @@ def get_user_settings(username: str) -> dict:
             "battery_display": "none",
             "battery_position": "left",
             "batch_minutes": 1,
+            "language": "he",
         }
 
 
@@ -187,6 +191,7 @@ def update_user_settings(
     battery_display: str = "none",
     battery_position: str = "left",
     batch_minutes: int = 1,
+    language: str = "he",
 ):
     init_db()
     with get_db() as conn:
@@ -194,8 +199,8 @@ def update_user_settings(
             """
             INSERT INTO user_settings
                 (username, font, location, calendar, sleeptime, blank, clock_style, sleep_start, sleep_end,
-                 battery_display, battery_position, batch_minutes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 battery_display, battery_position, batch_minutes, language)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(username) DO UPDATE SET
                 font=excluded.font,
                 location=excluded.location,
@@ -207,10 +212,12 @@ def update_user_settings(
                 sleep_end=excluded.sleep_end,
                 battery_display=excluded.battery_display,
                 battery_position=excluded.battery_position,
-                batch_minutes=excluded.batch_minutes
+                batch_minutes=excluded.batch_minutes,
+                language=excluded.language
             """,
             (username.lower(), font, location, calendar, sleeptime, blank, clock_style,
-             sleep_start, sleep_end, battery_display, battery_position, batch_minutes),
+             sleep_start, sleep_end, battery_display, battery_position, batch_minutes,
+             language),
         )
 
 

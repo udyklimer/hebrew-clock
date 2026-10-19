@@ -1,0 +1,162 @@
+"""Texts of the login and settings pages, in Hebrew and English.
+
+The page language is chosen with the flags at the top of each page and kept in
+a cookie. Without the cookie it follows the browser's language: Hebrew for a
+Hebrew browser (or when the browser says nothing), English otherwise.
+"""
+from fastapi import Request
+
+UI_COOKIE = "ui_lang"
+UI_LANGUAGES = ("he", "en")
+DEFAULT_UI_LANGUAGE = "he"
+
+TEXT: dict[str, dict[str, str]] = {
+    "he": {
+        "dir": "rtl",
+        "app_name": "שעון עברי",
+        "login_title": "שעון עברי - התחברות",
+        "username": "שם משתמש:",
+        "password": "סיסמה:",
+        "login": "התחבר",
+        "register_label": "הרשמה לחדשים:",
+        "new_username": "שם משתמש חדש",
+        "new_password": "סיסמה",
+        "register": "צור חשבון",
+        "error_username": "שם המשתמש יכול להכיל רק אותיות באנגלית, ספרות וקו תחתון (3 עד 30 תווים).",
+        "error_password": "הסיסמה חייבת להכיל לפחות {n} תווים.",
+        "error_taken": "שם המשתמש הזה כבר תפוס.",
+        "error_login": "שם משתמש או סיסמה שגויים.",
+
+        "settings_title": "הגדרות שעון - {user}",
+        "hello": "שלום,",
+        "logout": "התנתק",
+        "heading": "הגדרות השעון שלי",
+        "saved": "✓ ההגדרות נשמרו בהצלחה!",
+        "clock_language": "שפת השעון:",
+        "font": "גופן:",
+        "font_hint": "מוצגים רק גופנים שתומכים בכל האותיות של השפה שנבחרה.",
+        "location": "עיר:",
+        "calendar": "לוח שנה:",
+        "cal_gregorian": "לועזי",
+        "cal_jewish": "עברי",
+        "show_clock": "הצגת שעון:",
+        "clock_analog": "אנלוגי",
+        "clock_digital": "דיגיטלי",
+        "clock_none": "ללא (טקסט בלבד)",
+        "sleep_mode": "מצב שינה:",
+        "sleep_off": "כבוי (פועל רגיל)",
+        "sleep_on": "מופעל (לפי שעות)",
+        "sleep_start": "שעת התחלה:",
+        "sleep_end": "שעת סיום:",
+        "sleep_hint": "בין השעות האלה (שעון ישראל, 24 שעות) תוצג תמונת הלילה במקום השעון.",
+        "battery": "הצגת סוללה:",
+        "batt_none": "ללא",
+        "batt_icon": "סמל",
+        "batt_percent": "אחוזים",
+        "batt_both": "סמל ואחוזים",
+        "batt_left": "בצד שמאל",
+        "batt_right": "בצד ימין",
+        "batt_hint": "מוצג רק כשהמכשיר מדווח על מצב הסוללה. בתצוגה המקדימה מוצג ערך לדוגמה (75%).",
+        "batch": "חיסכון בסוללה:",
+        "batch_before": "פעם ב-",
+        "batch_after": " דקות",
+        "batch_hint": "כל כמה דקות המכשיר מתחבר לרשת ומוריד את התמונות לדקות הבאות. 1 = חיבור כל דקה. ערך גבוה חוסך סוללה, אבל שינויים בהגדרות, מזג האוויר ומצב הסוללה יתעדכנו רק בחיבור הבא (לחיצה על KEY1 מרעננת מיד).",
+        "blank": "מסך ריק (כיבוי מסך)",
+        "save": "שמור הגדרות",
+        "preview_hint": "התצוגה המקדימה מתעדכנת מיד עם כל שינוי. השעון עצמו יתעדכן רק לאחר לחיצה על \"שמור הגדרות\".",
+        "preview_alt": "תצוגה מקדימה של השעון",
+        "preview_error": "טעינת התצוגה המקדימה נכשלה",
+        "server_url": "כתובת השרת:",
+        "copy_button": "העתק",
+        "copied": "הועתק!",
+        "device_hint": "בהגדרות המכשיר הזינו את הכתובת הזו ואת שם המשתמש",
+        "fw_device": "גרסת קושחה במכשיר:",
+        "fw_seen": "דיווח אחרון:",
+        "fw_none": "המכשיר עדיין לא דיווח על גרסת קושחה.",
+        "fw_latest": "גרסה אחרונה זמינה:",
+        "fw_waiting": "עדכון ממתין למכשיר",
+        "switch_language": "שפת הדף",
+    },
+    "en": {
+        "dir": "ltr",
+        "app_name": "Hebrew Clock",
+        "login_title": "Hebrew Clock - Log in",
+        "username": "User name:",
+        "password": "Password:",
+        "login": "Log in",
+        "register_label": "New here? Register:",
+        "new_username": "New user name",
+        "new_password": "Password",
+        "register": "Create account",
+        "error_username": "The user name may contain only English letters, digits and underscores (3 to 30 characters).",
+        "error_password": "The password must be at least {n} characters long.",
+        "error_taken": "That user name is already taken.",
+        "error_login": "Wrong user name or password.",
+
+        "settings_title": "Clock settings - {user}",
+        "hello": "Hello,",
+        "logout": "Log out",
+        "heading": "My clock settings",
+        "saved": "✓ Settings saved!",
+        "clock_language": "Clock language:",
+        "font": "Font:",
+        "font_hint": "Only fonts that have every letter of the chosen language are listed.",
+        "location": "City:",
+        "calendar": "Calendar:",
+        "cal_gregorian": "Gregorian",
+        "cal_jewish": "Hebrew (Jewish)",
+        "show_clock": "Show clock:",
+        "clock_analog": "Analog",
+        "clock_digital": "Digital",
+        "clock_none": "None (text only)",
+        "sleep_mode": "Sleep mode:",
+        "sleep_off": "Off",
+        "sleep_on": "On (between set hours)",
+        "sleep_start": "Start:",
+        "sleep_end": "End:",
+        "sleep_hint": "Between these times (Israel time, 24-hour) the night image is shown instead of the clock.",
+        "battery": "Show battery:",
+        "batt_none": "None",
+        "batt_icon": "Icon",
+        "batt_percent": "Percentage",
+        "batt_both": "Icon and %",
+        "batt_left": "Left",
+        "batt_right": "Right",
+        "batt_hint": "Shown only when the device reports its battery. The preview uses a sample value (75%).",
+        "batch": "Battery save:",
+        "batch_before": "every ",
+        "batch_after": " min",
+        "batch_hint": "How often the device connects and downloads the images for the next minutes. 1 = every minute. A higher value saves battery, but settings, weather and battery level then update only at the next connection (pressing KEY1 refreshes at once).",
+        "blank": "Blank screen (display off)",
+        "save": "Save settings",
+        "preview_hint": "The preview follows your changes right away. The clock itself changes only after you press \"Save settings\".",
+        "preview_alt": "Clock preview",
+        "preview_error": "Could not load the preview",
+        "server_url": "Server URL:",
+        "copy_button": "Copy",
+        "copied": "Copied!",
+        "device_hint": "In the device's setup, enter this address and the user name",
+        "fw_device": "Device firmware:",
+        "fw_seen": "last report:",
+        "fw_none": "The device hasn't reported a firmware version yet.",
+        "fw_latest": "Latest available:",
+        "fw_waiting": "Update waiting for the device",
+        "switch_language": "Page language",
+    },
+}
+
+
+def ui_language(request: Request) -> str:
+    """The page language: the user's choice (cookie), else the browser's."""
+    chosen = request.cookies.get(UI_COOKIE)
+    if chosen in UI_LANGUAGES:
+        return chosen
+    accept = request.headers.get("accept-language", "").strip().lower()
+    if not accept:
+        return DEFAULT_UI_LANGUAGE
+    primary = accept.split(",")[0].split(";")[0].strip()
+    return "he" if primary.startswith(("he", "iw")) else "en"
+
+
+def texts(request: Request) -> dict[str, str]:
+    return TEXT[ui_language(request)]

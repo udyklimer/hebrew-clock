@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 from loguru import logger
 
 from app.core.config import settings
+from app.services import languages
 
 # BASE_DIR moves up from app/services/clock.py to the root project directory
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -22,9 +23,10 @@ EPD_HEIGHT = 480
 
 ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
-# Dynamic font loading from root directory
+# Fonts live in fonts/<group>/*.ttf (common, hebrew, latin); the name is the file stem
 FONTS_DIR = BASE_DIR / "fonts"
-VALID_FONTS = {f.stem for f in FONTS_DIR.glob("*.ttf")}
+FONT_PATHS = {f.stem: f for f in sorted(FONTS_DIR.rglob("*.ttf"))}
+VALID_FONTS = set(FONT_PATHS)
 
 # Fallback font list if no TTF files are found
 if not VALID_FONTS:
@@ -58,51 +60,6 @@ DEFAULT_BATCH_MINUTES = 1
 DEFAULT_SLEEP_START = "22:00"
 DEFAULT_SLEEP_END = "06:00"
 _HHMM = re.compile(r"([01]\d|2[0-3]):([0-5]\d)")
-
-# ── Hebrew time tables ────────────────────────────────
-
-HOURS = [
-    "אַחַת", "שְׁתַּיִם", "שָׁלוֹשׁ", "אַרְבַּע", "חָמֵשׁ", "שֵׁשׁ",
-    "שֶׁבַע", "שְׁמוֹנֶה", "תֵּשַׁע", "עֶשֶׂר", "אַחַת עֶשְׂרֵה", "שְׁתֵּים עֶשְׂרֵה"
-]
-MINUTE_PREFIX = [
-    "", "וְדַקָּה אַחַת", "וּשְׁתֵּי דַקּוֹת", "וְשָׁלוֹשׁ דַקּוֹת",
-    "וְאַרְבַּע דַקּוֹת", "וְחָמֵשׁ דַקּוֹת", "וְשֵׁשׁ דַקּוֹת", "וְשֶׁבַע דַקּוֹת",
-    "וּשְׁמוֹנֶה דַקּוֹת", "וְתֵשַׁע דַקּוֹת", "וְעֶשֶׂר דַקּוֹת",
-    "וְאַחַת עֶשְׂרֵה דַּקּוֹת", "וּשְׁתֵּים עֶשְׂרֵה דַּקּוֹת",
-    "וּשְׁלוֹשׁ עֶשְׂרֵה דַּקּוֹת", "וְאַרְבַּע עֶשְׂרֵה דַּקּוֹת",
-    "וָרֶבַע", "וְשֵׁשׁ עֶשְׂרֵה דַּקּוֹת", "וּשְׁבַע עֶשְׂרֵה דַּקּוֹת",
-    "וּשְׁמוֹנֶה עֶשְׂרֵה דַּקּוֹת", "וּתְשַׁע עֶשְׂרֵה דַּקּוֹת",
-    "וְעֶשְׂרִים דַקּוֹת", "עֶשְׂרִים וְאַחַת", "עֶשְׂרִים וּשְׁתַּיִם",
-    "עֶשְׂרִים וְשָׁלוֹשׁ", "עֶשְׂרִים וְאַרְבַּע", "עֶשְׂרִים וְחָמֵשׁ",
-    "עֶשְׂרִים וְשֵׁשׁ", "עֶשְׂרִים וְשֶׁבַע", "עֶשְׂרִים וּשְׁמוֹנֶה",
-    "עֶשְׂרִים וְתֵשַׁע", "וָחֵצִי", "שְׁלוֹשִׁים וְאַחַת",
-    "שְׁלוֹשִׁים וּשְׁתַּיִם", "שְׁלוֹשִׁים וְשָׁלוֹשׁ", "שְׁלוֹשִׁים וְאַרְבַּע",
-    "שְׁלוֹשִׁים וְחָמֵשׁ", "שְׁלוֹשִׁים וְשֵׁשׁ", "שְׁלוֹשִׁים וְשֶׁבַע",
-    "שְׁלוֹשִׁים וּשְׁמוֹנֶה", "שְׁלוֹשִׁים וְתֵשַׁע", "אַרְבָּעִים",
-    "אַרְבָּעִים וְאַחַת", "אַרְבָּעִים וּשְׁתַּיִם", "אַרְבָּעִים וְשָׁלוֹשׁ",
-    "אַרְבָּעִים וְאַרְבַּע", "אַרְבָּעִים וְחָמֵשׁ", "אַרְבָּעִים וְשֵׁשׁ",
-    "אַרְבָּעִים וְשֶׁבַע", "אַרְבָּעִים וּשְׁמוֹנֶה", "אַרְבָּעִים וְתֵשַׁע",
-    "חֲמִשִּׁים", "חֲמִשִּׁים וְאַחַת", "חֲמִשִּׁים וּשְׁתַּיִם",
-    "חֲמִשִּׁים וְשָׁלוֹשׁ", "חֲמִשִּׁים וְאַרְבַּע", "חֲמִשִּׁים וְחָמֵשׁ",
-    "חֲמִשִּׁים וְשֵׁשׁ", "חֲמִשִּׁים וְשֶׁבַע", "חֲמִשִּׁים וּשְׁמוֹנֶה",
-    "חֲמִשִּׁים וְתֵשַׁע",
-]
-
-PERIOD_WORDS = {
-    "בַּבֹּקֶר", "בַּצָּהֳרַיִם", "אַחַר הַצָּהֳרַיִם",
-    "בָּעֶרֶב", "בַּלַּיְלָה", "לִפְנוֹת בֹּקֶר",
-}
-
-MONTHS_HE = [
-    "בְּיָנוּאָר", "בְּפֶבְּרוּאָר", "בְּמָרְץ", "בְּאַפְּרִיל",
-    "בְּמַאי", "בְּיוּנִי", "בְּיוּלִי", "בְּאוֹגוּסְט",
-    "בְּסֶפְּטֶמְבֶּר", "בְּאוֹקְטוֹבֶּר", "בְּנוֹבֶמְבֶּר", "בְּדֶצֶמְבֶּר",
-]
-DAYS_HE = [
-    "יוֹם שֵׁנִי", "יוֹם שְׁלִישִׁי", "יוֹם רְבִיעִי",
-    "יוֹם חֲמִישִׁי", "יוֹם שִׁישִּׁי", "שַׁבָּת", "יוֹם רִאשׁוֹן",
-]
 
 # ── Helpers ───────────────────────────────────────────
 
@@ -154,16 +111,16 @@ def in_sleep_window(start: str | None, end: str | None,
 def get_font(size: int, font_name: str = DEFAULT_FONT) -> ImageFont.FreeTypeFont:
     """Loads specified TTF font with fallback options."""
     name = font_name if font_name in VALID_FONTS else DEFAULT_FONT
-    path = FONTS_DIR / f"{name}.ttf"
-    if path.exists():
+    path = FONT_PATHS.get(name)
+    if path and path.exists():
         try:
             return ImageFont.truetype(str(path), size)
         except Exception as exc:
             logger.warning("Failed to load font {}: {}", path, exc)
             
     for fallback in ("DavidLibre-Bold", "NotoSansHebrew-Bold", "FrankRuhlLibre"):
-        fb = FONTS_DIR / f"{fallback}.ttf"
-        if fb.exists():
+        fb = FONT_PATHS.get(fallback)
+        if fb and fb.exists():
             try:
                 return ImageFont.truetype(str(fb), size)
             except Exception:
@@ -193,7 +150,7 @@ def _missing_chars(font_name: str) -> frozenset[str]:
     """Returns the optional characters that the font has no glyph for."""
     try:
         # Basic layout maps each character straight to its glyph, with no shaping
-        font = ImageFont.truetype(str(FONTS_DIR / f"{font_name}.ttf"), 40,
+        font = ImageFont.truetype(str(FONT_PATHS[font_name]), 40,
                                   layout_engine=ImageFont.Layout.BASIC)
         notdef = font.getmask("\uffff")
         return frozenset(
@@ -203,6 +160,38 @@ def _missing_chars(font_name: str) -> frozenset[str]:
     except Exception as exc:
         logger.warning("Could not inspect font {}: {}", font_name, exc)
         return frozenset()
+
+
+@functools.lru_cache(maxsize=None)
+def _has_chars(font_name: str, chars: frozenset[str]) -> bool:
+    """True if the font has a glyph for every one of `chars`."""
+    try:
+        font = ImageFont.truetype(str(FONT_PATHS[font_name]), 40,
+                                  layout_engine=ImageFont.Layout.BASIC)
+        notdef = font.getmask("\uffff")
+        for ch in chars:
+            mask = font.getmask(ch)
+            if mask.size == notdef.size and bytes(mask) == bytes(notdef):
+                return False
+        return True
+    except Exception as exc:
+        logger.warning("Could not inspect font {}: {}", font_name, exc)
+        return False
+
+
+@functools.lru_cache(maxsize=None)
+def fonts_for_language(code: str) -> list[str]:
+    """Fonts that can write every text the clock draws in this language.
+
+    Characters the server can replace or draw itself (nikud, geresh, minus,
+    degree, colon, percent) are not required.
+    """
+    optional = set(_OPTIONAL_CHARS)
+    needed = frozenset(
+        ch for text in languages.all_texts(code) for ch in text
+        if not ch.isspace() and ch not in optional
+    )
+    return sorted((name for name in VALID_FONTS if _has_chars(name, needed)), key=str.lower)
 
 
 def _adapt_text(text: str, font_name: str) -> str:
@@ -257,27 +246,6 @@ def _png_bytes(img: Image.Image) -> bytes:
     buf.seek(0)
     return buf.read()
 
-
-def _get_time_period(h: int) -> str:
-    """Returns Hebrew period phrase for given hour."""
-    if 6  <= h < 12: return "בַּבֹּקֶר"
-    if 12 <= h < 16: return "בַּצָּהֳרַיִם"
-    if 16 <= h < 18: return "אַחַר הַצָּהֳרַיִם"
-    if 18 <= h < 21: return "בָּעֶרֶב"
-    if 21 <= h < 24: return "בַּלַּיְלָה"
-    if 0  <= h < 3:  return "בַּלַּיְלָה"
-    return "לִפְנוֹת בֹּקֶר"
-
-
-def _get_time_lines(h24: int, m: int) -> list[str]:
-    """Generates time strings in Hebrew words."""
-    h12 = h24 % 12 or 12
-    period = _get_time_period(h24)
-    mp = MINUTE_PREFIX[m]
-    hp = HOURS[h12 - 1]
-    if len(hp + mp) > 25:
-        return [hp, mp, period]
-    return [hp + " " + mp, period]
 
 # ── Drawing ───────────────────────────────────────────
 
@@ -415,10 +383,10 @@ def _layout_lines(draw: ImageDraw.Draw, lines: list[tuple[str, int]],
 
 
 def _draw_centered(draw: ImageDraw.Draw, text: str, font: ImageFont.FreeTypeFont,
-                   cx: float, cy: float) -> None:
+                   cx: float, cy: float, fill: int = 0) -> None:
     """Draws text so that its drawn pixels are centred on (cx, cy)."""
     l, t, r, b = _ink_bbox(draw, text, font)
-    draw.text((cx - (l + r) / 2, cy - (t + b) / 2), text, font=font, fill=0, anchor="ls")
+    draw.text((cx - (l + r) / 2, cy - (t + b) / 2), text, font=font, fill=fill, anchor="ls")
 
 
 def _middle_anchor_y(draw: ImageDraw.Draw, text: str, font: ImageFont.FreeTypeFont,
@@ -484,7 +452,7 @@ def _draw_battery(draw: ImageDraw.Draw, percent: int, charging: bool, display: s
 
 # ── Image generators ──────────────────────────────────
 
-def _generate_night_image(font_name: str) -> bytes:
+def _generate_night_image(font_name: str, language: str = languages.DEFAULT_LANGUAGE) -> bytes:
     """Generates night screen layout when sleep_time is True."""
     W, H = EPD_WIDTH, EPD_HEIGHT
     img = Image.new("L", (W, H), color=0)
@@ -516,11 +484,12 @@ def _generate_night_image(font_name: str) -> bytes:
         except Exception as exc:
             logger.warning("sleeping image error: {}", exc)
 
-    text_cx = (W - 380 - 40) // 2
-    draw.text((text_cx, H // 2 - 30), _adapt_text("זְמַן לִישׁוֹן", font_name),
-              font=get_font(72, font_name), fill=255, anchor="mm")
-    draw.text((text_cx, H // 2 + 55), _adapt_text("לַיְלָה טוֹב", font_name),
-              font=get_font(44, font_name), fill=180, anchor="mm")
+    # Title and subtitle, fitted into the space left of the picture
+    title, subtitle = (_adapt_text(t, font_name) for t in languages.get(language).night_texts())
+    box = (20, H // 2 - 110, W - 380 - 40, H // 2 + 110)
+    placed = _layout_lines(draw, [(title, 72), (subtitle, 44)], box, font_name, gap=40)
+    for (text, font, cx, cy), fill in zip(placed, (255, 180)):
+        _draw_centered(draw, text, font, cx, cy, fill=fill)
     return _png_bytes(img)
 
 
@@ -530,17 +499,24 @@ def generate_clock_image(
     weather:     dict | None = None,
     jewish_date: str | None  = None,
     clock_style: str        = DEFAULT_CLOCK_STYLE,
+    language:    str        = languages.DEFAULT_LANGUAGE,
+    jewish_parts: tuple[int, str, int] | None = None,
     battery:     int | None  = None,
     charging:    bool       = False,
     battery_display:  str   = DEFAULT_BATTERY_DISPLAY,
     battery_position: str   = DEFAULT_BATTERY_POSITION,
     now: datetime.datetime | None = None,
 ) -> bytes:
-    """Generates full Hebrew clock screen image."""
+    """Generates the clock screen image.
+
+    jewish_parts is (day, month name, year) from hebcal; it is written in the
+    clock's language. jewish_date is an already formatted 'date\nyear' string.
+    """
     fn = font_name if font_name in VALID_FONTS else DEFAULT_FONT
+    lang = languages.get(language)
 
     if sleep_time:
-        return _generate_night_image(fn)
+        return _generate_night_image(fn, language)
 
     now  = now or get_israel_time()
     h24, m = now.hour, now.minute
@@ -553,9 +529,9 @@ def generate_clock_image(
     draw.rectangle([PAD1, PAD1, W - PAD1, H - PAD1], outline=0, width=3)
     draw.rectangle([PAD2, PAD2, W - PAD2, H - PAD2], outline=0, width=1)
 
-    lines       = _get_time_lines(h24, m)
-    time_lines  = [_adapt_text(l, fn) for l in lines if l not in PERIOD_WORDS]
-    period_line = _adapt_text(next((l for l in lines if l in PERIOD_WORDS), ""), fn)
+    lines, period = lang.time_text(h24, m)
+    time_lines  = [_adapt_text(l, fn) for l in lines]
+    period_line = _adapt_text(period, fn)
 
     sep_y     = H - 105
     bar_cy    = H - 52
@@ -600,14 +576,16 @@ def generate_clock_image(
     # ── Bottom bar ──
     cell_top, cell_bottom = sep_y + 5, H - PAD2 - 5
 
-    day_name  = _adapt_text(DAYS_HE[now.weekday()], fn)
+    day_name  = _adapt_text(lang.day_name(now.weekday()), fn)
+    if jewish_parts:
+        jewish_date = "\n".join(lang.jewish_date(*jewish_parts))
     if jewish_date:
         jewish_date = _adapt_text(jewish_date, fn)
     if jewish_date and "\n" in jewish_date:
         date_str, year_str = jewish_date.split("\n", 1)
         date_lines = [(day_name, 28), (date_str, 26), (year_str, 22)]
     else:
-        date_str = jewish_date if jewish_date else _adapt_text(f"{now.day} {MONTHS_HE[now.month - 1]}", fn)
+        date_str = jewish_date if jewish_date else _adapt_text(lang.date_text(now.day, now.month), fn)
         date_lines = [(day_name, 34), (date_str, 34)]
     draw_block(date_lines, (bar_left + 5, cell_top, div_x - 5, cell_bottom), gap=5)
 
@@ -620,7 +598,7 @@ def generate_clock_image(
 
         # Temperature and description share the right half of the cell, clear of the icon
         temp = weather["temp"]
-        desc = _adapt_text(weather.get("desc", ""), fn)
+        desc = _adapt_text(lang.weather_text(weather.get("icon_key", "cloud")), fn)
         text_box = ((div_x2 + bar_right) // 2 + 4, cell_top, bar_right - 4, cell_bottom)
         (temp_str, temp_font, cx, temp_cy), (_, desc_font, _, desc_cy) = _layout_lines(
             draw, [(str(temp), 40), (desc, 34)], text_box, fn, gap=5)
@@ -641,8 +619,7 @@ def generate_blank_image() -> bytes:
 
 def log_available_fonts() -> None:
     """Logs list of available system TTF fonts."""
-    found = [f for f in VALID_FONTS if (FONTS_DIR / f"{f}.ttf").exists()]
-    if found:
-        logger.info("available fonts: {}", ", ".join(sorted(found)))
+    if FONT_PATHS:
+        logger.info("available fonts: {}", ", ".join(sorted(FONT_PATHS, key=str.lower)))
     else:
-        logger.warning("no Hebrew font files found in {}", FONTS_DIR)
+        logger.warning("no font files found in {}", FONTS_DIR)

@@ -14,6 +14,8 @@ A Hebrew word-clock server for e-paper displays. It renders the current Israel t
 - **User accounts.** Each user registers on the website and gets their own saved clock settings.
 - **Settings page with live preview.** Font, city, calendar, clock style, sleep hours, battery display and blank screen, with a preview image that updates as you change them.
 - **One URL per device.** The device asks for `/clock.png?user=<name>` and the server applies that user's saved settings, so the look of the clock is changed from the website, not on the device.
+- **Four clock languages.** Hebrew, English, French and Spanish, each written the way people say the time ("quarter to eight", "huit heures moins le quart", "las ocho menos cuarto").
+- **Settings page in Hebrew or English,** switched with the flags at the top.
 - **Clock style.** Analog face, digital `HH:mm`, or no clock (larger text only).
 - **Sleep hours.** The night image is shown between a start and end time that each user sets.
 - **Battery indicator.** The device reports its battery voltage and the server draws an icon, a percentage or both in a top corner.
@@ -64,7 +66,8 @@ Log in at the server's home page to reach the settings page.
 
 | Setting | Options | Notes |
 |---------|---------|-------|
-| Font | any font in `fonts/` | See [Fonts](#fonts). |
+| Clock language | עברית / English / Français / Español | The language of the time, date, weather and night screen. |
+| Font | fonts that can write the chosen language | See [Fonts](#fonts). The list changes with the clock language. |
 | Location | city name | Used for the weather (from [wttr.in](https://wttr.in)). |
 | Calendar | Gregorian / Jewish | The Jewish date comes from [hebcal.com](https://www.hebcal.com). |
 | Show Clock | Analog / Digital / None | Digital shows `HH:mm`; None leaves only the Hebrew text, drawn larger. |
@@ -91,7 +94,8 @@ With `user`, the saved settings of that user are applied. Any of the parameters 
 
 | Parameter | Values | Default |
 |-----------|--------|---------|
-| `font` | a font name from `fonts/`, without `.ttf` | `DavidLibre-Bold` |
+| `language` | `he`, `en`, `fr`, `es` | `he` |
+| `font` | a font name from `fonts/`, without `.ttf`; a font that cannot write the language is replaced by the default | `DavidLibre-Bold` |
 | `location` | city name | `Haifa` |
 | `calendar` | `gregorian`, `jewish` | `gregorian` |
 | `clock_style` | `analog`, `digital`, `none` | `analog` |
@@ -141,11 +145,19 @@ Other routes: `/health`, `/robots.txt`, `/sitemap.xml`, and interactive API docs
 
 ## Fonts
 
-Every `.ttf` file in `fonts/` appears in the settings page under its file name. To add a font, drop the file into `fonts/` and restart the server (or rebuild the image).
+Fonts are kept in folders by alphabet:
 
-A font does not have to be complete. If it lacks vowel marks, the geresh marks used in Hebrew dates, the minus sign, the degree sign, the colon or the percent sign, the server drops, replaces or draws those itself. For a font with no vowel marks, words are written in their full unpointed spelling (for example מעונן, בבוקר, שתיים). The font does need the Hebrew letters and the digits.
+| Folder | Fonts | Languages |
+|--------|-------|-----------|
+| `fonts/common/` | Have Hebrew (with vowel marks) and Latin with accents: Assistant, David Libre, Frank Ruhl Libre, Heebo, Noto Sans Hebrew, Open Sans, Playpen Sans Hebrew, Rubik | all four |
+| `fonts/hebrew/` | Hebrew only, mostly without vowel marks: Anka, Comix No2, Gan, Makabi, Noot, Stopmotion | Hebrew (Makabi and Noot also English) |
+| `fonts/latin/` | Latin with accents: Lato, Merriweather, Montserrat, Poppins, Roboto | English, French, Spanish |
 
-The bundled fonts keep their own licenses (SIL Open Font License or GNU GPL, as stated inside each font file).
+The folders are only for order. For each language the server checks which fonts contain every letter that language's clock texts use (for example ñ for Spanish, ç and è for French), and the settings page lists only those. To add a font, drop the `.ttf` file into the matching folder and restart the server (or rebuild the image); it appears under its file name.
+
+A font does not have to be complete. If it lacks vowel marks, the geresh marks used in Hebrew dates, the minus sign, the degree sign, the colon or the percent sign, the server drops, replaces or draws those itself. For a font with no vowel marks, Hebrew words are written in their full unpointed spelling (for example מעונן, בבוקר, שתיים).
+
+The Google fonts were added as fixed bold versions of the variable fonts from [Google Fonts](https://github.com/google/fonts); their licenses are in `fonts/licenses/`. All bundled fonts keep their own licenses (SIL Open Font License or GNU GPL, as stated inside each font file).
 
 ---
 
@@ -235,12 +247,14 @@ app/
   core/security.py     # Password hashing and signed login cookies
   db.py                # SQLite storage for users and their settings
   services/
-    clock.py           # Image generation (Hebrew word-clock logic)
+    clock.py           # Image generation (layout, fonts, drawing)
+    languages/         # Clock texts per language: he, en, fr, es
+    ui_text.py         # Settings and login page texts, Hebrew and English
     weather.py         # wttr.in weather, cached
     jewish_cal.py      # hebcal.com Hebrew date, cached
     seo.py             # robots.txt and sitemap.xml
   templates/           # Login page and settings page
-fonts/                 # Fonts offered on the settings page
+fonts/                 # Fonts by alphabet: common/, hebrew/, latin/ (+ licenses/)
 sketch/hebclk.ino      # Original ESP32 sketch from the upstream project
 tests/
 Dockerfile

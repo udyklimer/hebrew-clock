@@ -5,7 +5,8 @@ import io
 import pytest
 from PIL import Image, features
 
-from app.services import clock
+from app.services import clock, languages
+from app.services.languages import he
 
 W, H = clock.EPD_WIDTH, clock.EPD_HEIGHT
 
@@ -21,13 +22,21 @@ for _dx in (_BAR_LEFT + _BAR_WIDTH // 3, _BAR_LEFT + 2 * _BAR_WIDTH // 3):
     _CLEAR_STRIPS += [(_dx - 3, 390, _dx - 2, 462), (_dx + 2, 390, _dx + 3, 462)]
 
 _WEATHER = {"temp": -3, "icon_key": "sun_cloud", "desc": "מְעֻנָּן חֶלְקִי"}
-_JEWISH_DATE = "כ״ז בְּסִיוָן\nתשפ״ו"
+_JEWISH_DATE = (27, "Sivan", 5786)
+
+
+_LANGUAGE_FONTS = [(code, font) for code in languages.LANGUAGES
+                   for font in clock.fonts_for_language(code)]
 
 
 @pytest.mark.skipif(not features.check("raqm"), reason="needs Raqm text shaping")
-@pytest.mark.parametrize("font_name", sorted(clock.VALID_FONTS))
+@pytest.mark.parametrize("language, font_name", _LANGUAGE_FONTS)
 @pytest.mark.parametrize("clock_style", sorted(clock.VALID_CLOCK_STYLES))
-def test_text_stays_inside_its_area(monkeypatch, font_name, clock_style):
+def test_text_stays_inside_its_area_in_every_language(monkeypatch, language, font_name, clock_style):
+    _check_layout(monkeypatch, font_name, clock_style, language)
+
+
+def _check_layout(monkeypatch, font_name, clock_style, language):
     for hour, minute, jewish_date in ((22, 42, None), (11, 17, _JEWISH_DATE)):
         monkeypatch.setattr(
             clock, "get_israel_time",
@@ -35,7 +44,7 @@ def test_text_stays_inside_its_area(monkeypatch, font_name, clock_style):
         )
         png = clock.generate_clock_image(
             font_name=font_name, weather=_WEATHER,
-            jewish_date=jewish_date, clock_style=clock_style,
+            jewish_parts=jewish_date, clock_style=clock_style, language=language,
             battery=100, charging=True, battery_display="both",
             battery_position="left" if jewish_date else "right",
         )
@@ -82,5 +91,5 @@ def test_pointed_fonts_keep_their_text():
     (59, "שֶׁבַע חֲמִשִּׁים וְתֵשַׁע"),
 ])
 def test_minute_phrases(minute, expected):
-    lines = clock._get_time_lines(19, minute)
-    assert " ".join(l for l in lines if l not in clock.PERIOD_WORDS) == expected
+    lines, _period = he.time_text(19, minute)
+    assert " ".join(lines) == expected

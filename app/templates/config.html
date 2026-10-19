@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html lang="{{ ui_lang }}" dir="{{ t.dir }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>הגדרות שעון - {{ username }}</title>
+  <title>{{ t.settings_title | replace('{user}', username) }}</title>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 1rem; box-sizing: border-box; }
     .layout { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; align-items: flex-start; width: 100%; max-width: 1200px; }
@@ -28,6 +28,11 @@
     .fw-badge { background: #fff3cd; color: #664d03; border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.8rem; margin-inline-start: 0.4rem; }
     input[type="range"] { width: 100%; accent-color: #28a745; cursor: pointer; }
     .batch-value { font-weight: 400; color: #666; margin-inline-start: 0.4rem; }
+    .lang-switch { display: flex; gap: 0.4rem; }
+    .flag { display: block; width: 30px; height: 20px; border-radius: 3px; overflow: hidden; opacity: 0.45; outline: 1px solid #ddd; }
+    .flag.current { opacity: 1; outline: 2px solid #28a745; }
+    .flag svg { width: 100%; height: 100%; display: block; }
+    .top-actions { display: flex; align-items: center; gap: 0.9rem; }
     .hint { font-size: 0.8rem; color: #888; line-height: 1.5; margin: 1rem 0 0; }
 
     .preview-col { flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
@@ -49,142 +54,155 @@
   <div class="layout">
     <div class="card">
       <div class="top-bar">
-        <span class="user-info">שלום, <strong>{{ username }}</strong></span>
-        <a href="/logout" class="logout-btn">התנתק</a>
+        <span class="user-info">{{ t.hello }} <strong>{{ username }}</strong></span>
+        <div class="top-actions">
+          {% include "_lang_switch.html" %}
+          <a href="/logout" class="logout-btn">{{ t.logout }}</a>
+        </div>
       </div>
 
-      <h2>הגדרות השעון שלי</h2>
+      <h2>{{ t.heading }}</h2>
 
       {% if saved %}
-        <div class="saved-msg">✓ ההגדרות נשמרו בהצלחה!</div>
+        <div class="saved-msg">{{ t.saved }}</div>
       {% endif %}
 
       <form method="post" action="/config">
         <div class="form-group">
-          <label for="font">גופן (Font):</label>
-          <select name="font" id="font">
-            {% for f in fonts %}
-              <option value="{{ f }}" {% if f == selected_font %}selected{% endif %}>{{ f }}</option>
+          <label for="language">{{ t.clock_language }}</label>
+          <select name="language" id="language">
+            {% for code, name in clock_languages %}
+              <option value="{{ code }}" {% if code == selected_language %}selected{% endif %}>{{ name }}</option>
             {% endfor %}
           </select>
         </div>
 
         <div class="form-group">
-          <label for="location">עיר (Location):</label>
+          <label for="font">{{ t.font }}</label>
+          <select name="font" id="font">
+            {% for f in fonts %}
+              <option value="{{ f }}" {% if f == selected_font %}selected{% endif %}>{{ f }}</option>
+            {% endfor %}
+          </select>
+          <p class="hint" style="margin-top: 0.4rem;">{{ t.font_hint }}</p>
+        </div>
+
+        <div class="form-group">
+          <label for="location">{{ t.location }}</label>
           <input type="text" name="location" id="location" value="{{ selected_location }}" required />
         </div>
 
         <div class="form-group">
-          <label for="calendar">לוח שנה (Calendar):</label>
+          <label for="calendar">{{ t.calendar }}</label>
           <select name="calendar" id="calendar">
-            <option value="gregorian" {% if selected_calendar == 'gregorian' %}selected{% endif %}>לועזי</option>
-            <option value="jewish" {% if selected_calendar == 'jewish' %}selected{% endif %}>עברי</option>
+            <option value="gregorian" {% if selected_calendar == 'gregorian' %}selected{% endif %}>{{ t.cal_gregorian }}</option>
+            <option value="jewish" {% if selected_calendar == 'jewish' %}selected{% endif %}>{{ t.cal_jewish }}</option>
           </select>
         </div>
 
         <div class="form-group">
-          <label for="clock_style">הצגת שעון (Show Clock):</label>
+          <label for="clock_style">{{ t.show_clock }}</label>
           <select name="clock_style" id="clock_style">
-            <option value="analog" {% if selected_clock_style == 'analog' %}selected{% endif %}>אנלוגי</option>
-            <option value="digital" {% if selected_clock_style == 'digital' %}selected{% endif %}>דיגיטלי</option>
-            <option value="none" {% if selected_clock_style == 'none' %}selected{% endif %}>ללא (טקסט בלבד)</option>
+            <option value="analog" {% if selected_clock_style == 'analog' %}selected{% endif %}>{{ t.clock_analog }}</option>
+            <option value="digital" {% if selected_clock_style == 'digital' %}selected{% endif %}>{{ t.clock_digital }}</option>
+            <option value="none" {% if selected_clock_style == 'none' %}selected{% endif %}>{{ t.clock_none }}</option>
           </select>
         </div>
 
         <div class="form-group">
-          <label for="sleeptime">מצב שינה (Sleep Mode):</label>
+          <label for="sleeptime">{{ t.sleep_mode }}</label>
           <select name="sleeptime" id="sleeptime">
-            <option value="0" {% if selected_sleeptime == '0' %}selected{% endif %}>כבוי (פועל רגיל)</option>
-            <option value="1" {% if selected_sleeptime == '1' %}selected{% endif %}>מופעל (לפי שעות)</option>
+            <option value="0" {% if selected_sleeptime == '0' %}selected{% endif %}>{{ t.sleep_off }}</option>
+            <option value="1" {% if selected_sleeptime == '1' %}selected{% endif %}>{{ t.sleep_on }}</option>
           </select>
         </div>
 
         <div class="form-group" id="sleep-times">
           <div class="time-row">
             <div>
-              <label for="sleep_start">שעת התחלה:</label>
+              <label for="sleep_start">{{ t.sleep_start }}</label>
               <input type="text" name="sleep_start" id="sleep_start" value="{{ selected_sleep_start }}"
                      dir="ltr" inputmode="numeric" maxlength="5" placeholder="22:00"
                      pattern="([01][0-9]|2[0-3]):[0-5][0-9]" title="HH:MM (00:00-23:59)" required />
             </div>
             <div>
-              <label for="sleep_end">שעת סיום:</label>
+              <label for="sleep_end">{{ t.sleep_end }}</label>
               <input type="text" name="sleep_end" id="sleep_end" value="{{ selected_sleep_end }}"
                      dir="ltr" inputmode="numeric" maxlength="5" placeholder="06:00"
                      pattern="([01][0-9]|2[0-3]):[0-5][0-9]" title="HH:MM (00:00-23:59)" required />
             </div>
           </div>
-          <p class="hint" style="margin-top: 0.4rem;">בין השעות האלה (שעון ישראל, 24 שעות) תוצג תמונת הלילה במקום השעון.</p>
+          <p class="hint" style="margin-top: 0.4rem;">{{ t.sleep_hint }}</p>
         </div>
 
         <div class="form-group">
-          <label for="battery_display">הצגת סוללה (Show Battery):</label>
+          <label for="battery_display">{{ t.battery }}</label>
           <div class="time-row">
             <div>
               <select name="battery_display" id="battery_display">
-                <option value="none" {% if selected_battery_display == 'none' %}selected{% endif %}>ללא</option>
-                <option value="icon" {% if selected_battery_display == 'icon' %}selected{% endif %}>סמל</option>
-                <option value="percent" {% if selected_battery_display == 'percent' %}selected{% endif %}>אחוזים</option>
-                <option value="both" {% if selected_battery_display == 'both' %}selected{% endif %}>סמל ואחוזים</option>
+                <option value="none" {% if selected_battery_display == 'none' %}selected{% endif %}>{{ t.batt_none }}</option>
+                <option value="icon" {% if selected_battery_display == 'icon' %}selected{% endif %}>{{ t.batt_icon }}</option>
+                <option value="percent" {% if selected_battery_display == 'percent' %}selected{% endif %}>{{ t.batt_percent }}</option>
+                <option value="both" {% if selected_battery_display == 'both' %}selected{% endif %}>{{ t.batt_both }}</option>
               </select>
             </div>
             <div>
               <select name="battery_position" id="battery_position">
-                <option value="left" {% if selected_battery_position == 'left' %}selected{% endif %}>בצד שמאל</option>
-                <option value="right" {% if selected_battery_position == 'right' %}selected{% endif %}>בצד ימין</option>
+                <option value="left" {% if selected_battery_position == 'left' %}selected{% endif %}>{{ t.batt_left }}</option>
+                <option value="right" {% if selected_battery_position == 'right' %}selected{% endif %}>{{ t.batt_right }}</option>
               </select>
             </div>
           </div>
-          <p class="hint" style="margin-top: 0.4rem;">מוצג רק כשהמכשיר מדווח על מצב הסוללה. בתצוגה המקדימה מוצג ערך לדוגמה (75%).</p>
+          <p class="hint" style="margin-top: 0.4rem;">{{ t.batt_hint }}</p>
         </div>
 
         <div class="form-group">
-          <label for="batch_minutes">חיסכון בסוללה (Battery Save):
-            <span class="batch-value">פעם ב-<span id="batch-value" dir="ltr">{{ selected_batch_minutes }}</span> דקות</span>
+          <label for="batch_minutes">{{ t.batch }}
+            <span class="batch-value">{{ t.batch_before }}<span id="batch-value" dir="ltr">{{ selected_batch_minutes }}</span>{{ t.batch_after }}</span>
           </label>
           <input type="range" name="batch_minutes" id="batch_minutes"
                  min="{{ min_batch_minutes }}" max="{{ max_batch_minutes }}" step="1"
                  value="{{ selected_batch_minutes }}" />
-          <p class="hint" style="margin-top: 0.4rem;">כל כמה דקות המכשיר מתחבר לרשת ומוריד את התמונות לדקות הבאות. 1 = חיבור כל דקה. ערך גבוה חוסך סוללה, אבל שינויים בהגדרות, מזג האוויר ומצב הסוללה יתעדכנו רק בחיבור הבא (לחיצה על KEY1 מרעננת מיד).</p>
+          <p class="hint" style="margin-top: 0.4rem;">{{ t.batch_hint }}</p>
         </div>
 
         <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
           <input type="checkbox" name="blank" id="blank" value="1" {% if selected_blank %}checked{% endif %} style="width: 18px; height: 18px; cursor: pointer;" />
-          <label for="blank" style="margin-bottom: 0; cursor: pointer;">מסך ריק (כיבוי מסך)</label>
+          <label for="blank" style="margin-bottom: 0; cursor: pointer;">{{ t.blank }}</label>
         </div>
 
-        <button type="submit" class="btn-save">שמור הגדרות</button>
+        <button type="submit" class="btn-save">{{ t.save }}</button>
       </form>
 
-      <p class="hint">התצוגה המקדימה מתעדכנת מיד עם כל שינוי. השעון עצמו יתעדכן רק לאחר לחיצה על "שמור הגדרות".</p>
+      <p class="hint">{{ t.preview_hint }}</p>
     </div>
 
     <div class="preview-col">
       <div class="preview-frame">
-        <img id="preview" alt="תצוגה מקדימה של השעון">
+        <img id="preview" alt="{{ t.preview_alt }}">
         <div id="spinner" class="overlay hidden"><div class="spinner"></div></div>
-        <div id="preview-error" class="overlay error hidden">טעינת התצוגה המקדימה נכשלה</div>
+        <div id="preview-error" class="overlay error hidden">{{ t.preview_error }}</div>
       </div>
 
       <div class="url-card">
-        <label for="clock-url">כתובת השרת (Server URL):</label>
+        <label for="clock-url">{{ t.server_url }}</label>
         <div class="url-row">
           <input id="clock-url" type="text" readonly>
-          <button id="copy-btn" type="button" class="btn-copy">העתק</button>
+          <button id="copy-btn" type="button" class="btn-copy">{{ t.copy_button }}</button>
         </div>
-        <p class="hint">בהגדרות המכשיר הזינו את הכתובת הזו ואת שם המשתמש <strong dir="ltr">{{ username }}</strong>.</p>
+        <p class="hint">{{ t.device_hint }} <strong dir="ltr">{{ username }}</strong>.</p>
 
         <div class="fw-info">
           {% if device_fw %}
-            <div>גרסת קושחה במכשיר: <strong dir="ltr">{{ device_fw }}</strong>
-              {% if device_seen %}<span class="fw-seen">(דיווח אחרון: <span dir="ltr">{{ device_seen }}</span>)</span>{% endif %}
+            <div>{{ t.fw_device }} <strong dir="ltr">{{ device_fw }}</strong>
+              {% if device_seen %}<span class="fw-seen">({{ t.fw_seen }} <span dir="ltr">{{ device_seen }}</span>)</span>{% endif %}
             </div>
           {% else %}
-            <div>המכשיר עדיין לא דיווח על גרסת קושחה.</div>
+            <div>{{ t.fw_none }}</div>
           {% endif %}
           {% if latest_fw %}
-            <div>גרסה אחרונה זמינה: <strong dir="ltr">{{ latest_fw }}</strong>
-              {% if update_waiting %}<span class="fw-badge">עדכון ממתין למכשיר</span>{% endif %}
+            <div>{{ t.fw_latest }} <strong dir="ltr">{{ latest_fw }}</strong>
+              {% if update_waiting %}<span class="fw-badge">{{ t.fw_waiting }}</span>{% endif %}
             </div>
           {% endif %}
         </div>
@@ -205,6 +223,7 @@
     // Preview of the current (possibly unsaved) form values
     function buildPath() {
       const p = new URLSearchParams({
+        language:  document.getElementById('language').value,
         font:      document.getElementById('font').value,
         location:  document.getElementById('location').value.trim() || 'Haifa',
         calendar:  document.getElementById('calendar').value,
@@ -253,6 +272,22 @@
       document.getElementById(id).addEventListener('input', updateDebounced)
     );
 
+    // Fonts that can write each clock language; the list follows the language
+    const FONTS_BY_LANGUAGE = {{ fonts_by_language | tojson }};
+    const DEFAULT_FONT = {{ default_font | tojson }};
+    const fontSelect = document.getElementById('font');
+    document.getElementById('language').addEventListener('change', e => {
+      const fonts = FONTS_BY_LANGUAGE[e.target.value] || [];
+      const current = fontSelect.value;
+      const keep = fonts.includes(current) ? current : (fonts.includes(DEFAULT_FONT) ? DEFAULT_FONT : fonts[0]);
+      fontSelect.innerHTML = '';
+      for (const f of fonts) {
+        const option = new Option(f, f, false, f === keep);
+        fontSelect.add(option);
+      }
+      updatePreview();
+    });
+
     // Show the battery save value while the slider moves
     document.getElementById('batch_minutes').addEventListener('input', e => {
       document.getElementById('batch-value').textContent = e.target.value;
@@ -267,10 +302,10 @@
     toggleSleepTimes();
 
     function flashCopied() {
-      copyBtn.textContent = 'הועתק!';
+      copyBtn.textContent = {{ t.copied | tojson }};
       copyBtn.classList.add('copied');
       setTimeout(() => {
-        copyBtn.textContent = 'העתק';
+        copyBtn.textContent = {{ t.copy_button | tojson }};
         copyBtn.classList.remove('copied');
       }, 1500);
     }

@@ -19,6 +19,7 @@ from app.core.security import (
 from app.services import clock, weather as weather_svc, jewish_cal as jewish_cal_svc
 from app.services import seo as seo_svc
 from app.services import firmware as firmware_svc
+from app.services import languages, ui_text
 from app import db
 
 router = APIRouter()
@@ -37,6 +38,32 @@ MAX_LOCATION_LENGTH = 64
 _TEMPLATES = Jinja2Templates(
     directory=str(Path(__file__).resolve().parents[2] / "templates")
 )
+
+
+def _page(request: Request, template: str, context: dict) -> Response:
+    """Renders a page in the visitor's page language."""
+    ui_lang = ui_text.ui_language(request)
+    return _TEMPLATES.TemplateResponse(request, template, {
+        "t": ui_text.TEXT[ui_lang],
+        "ui_lang": ui_lang,
+        "next_path": request.url.path,
+        "gtag_id": settings.gtag_id,
+        **context,
+    })
+
+
+def _login_page(request: Request, error_key: str | None = None, **fmt) -> Response:
+    error = ui_text.texts(request)[error_key].format(**fmt) if error_key else None
+    return _page(request, "index.html", {"error": error})
+
+
+@router.get("/ui-lang/{code}", include_in_schema=False)
+async def set_ui_language(code: str, next: str = Query("/")) -> Response:
+    """Switches the page language (the flags) and returns to the page."""
+    response = RedirectResponse(url=next if next in ("/", "/config") else "/", status_code=303)
+    if code in ui_text.UI_LANGUAGES:
+        response.set_cookie(ui_text.UI_COOKIE, code, max_age=365 * 24 * 3600, samesite="lax")
+    return response
 
 
 def _login_response(request: Request, username: str) -> Response:
@@ -61,11 +88,7 @@ async def home(
     if read_session(user_session):
         return RedirectResponse(url="/config", status_code=303)
     
-    return _TEMPLATES.TemplateResponse(
-        request,
-        "index.html",
-        {"error": None, "gtag_id": settings.gtag_id}
-    )
+    return _login_page(request)
 
 
 @router.post("/register", response_class=HTMLResponse, include_in_schema=False)
@@ -76,23 +99,14 @@ async def register(
 ) -> Response:
     clean_username = username.strip()
     if not db.is_valid_username(clean_username):
-        return _TEMPLATES.TemplateResponse(
-            request, "index.html",
-            {"error": "Username must contain English letters and digits only.", "gtag_id": settings.gtag_id}
-        )
+        return _login_page(request, "error_username")
     
     if len(password) < MIN_PASSWORD_LENGTH:
-        return _TEMPLATES.TemplateResponse(
-            request, "index.html",
-            {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters.", "gtag_id": settings.gtag_id}
-        )
+        return _login_page(request, "error_password", n=MIN_PASSWORD_LENGTH)
 
     success = db.register_user(clean_username, password)
     if not success:
-        return _TEMPLATES.TemplateResponse(
-            request, "index.html",
-            {"error": "Username already taken.", "gtag_id": settings.gtag_id}
-        )
+        return _login_page(request, "error_taken")
     
     return _login_response(request, clean_username.lower())
 
@@ -107,10 +121,7 @@ async def login(
     if db.authenticate_user(clean_username, password):
         return _login_response(request, clean_username.lower())
     
-    return _TEMPLATES.TemplateResponse(
-        request, "index.html",
-        {"error": "Invalid username or password.", "gtag_id": settings.gtag_id}
-    )
+    return _login_page(request, "error_login")
 
 
 @router.get("/logout", include_in_schema=False)
@@ -142,12 +153,18 @@ async def config_page(
         latest_fw and device_parsed and firmware_svc.parse_version(latest_fw) > device_parsed
     )
 
-    return _TEMPLATES.TemplateResponse(
+    language = user_settings.get("language", languages.DEFAULT_LANGUAGE)
+    fonts_by_language = {code: clock.fonts_for_language(code) for code in languages.LANGUAGES}
+    return _page(
         request,
         "config.html",
         {
             "username": username,
-            "fonts": sorted(clock.VALID_FONTS),
+            "clock_languages": list(languages.NATIVE_NAMES.items()),
+            "selected_language": language,
+            "fonts": fonts_by_language.get(language, []),
+            "fonts_by_language": fonts_by_language,
+            "default_font": DEFAULT_FONT,
             "selected_font": user_settings.get("font", DEFAULT_FONT),
             "selected_location": user_settings.get("location", DEFAULT_LOCATION),
             "selected_calendar": user_settings.get("calendar", DEFAULT_CALENDAR),
@@ -166,7 +183,6 @@ async def config_page(
             "device_seen": device_seen,
             "latest_fw": latest_fw,
             "update_waiting": update_waiting,
-            "gtag_id": settings.gtag_id, 
         }
     )
 
@@ -184,13 +200,16 @@ async def save_config(
     batch_minutes: int = Form(clock.DEFAULT_BATCH_MINUTES),
     blank: Optional[str] = Form(None),
     clock_style: str = Form(clock.DEFAULT_CLOCK_STYLE),
+    language: str = Form(languages.DEFAULT_LANGUAGE),
     user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
 ) -> Response:
     username = read_session(user_session)
     if not username:
         return RedirectResponse(url="/", status_code=303)
     
-    if font not in clock.VALID_FONTS:
+    if language not in languages.LANGUAGES:
+        language = languages.DEFAULT_LANGUAGE
+    if font not in clock.fonts_for_language(language):
         font = DEFAULT_FONT
     if calendar not in VALID_CALENDARS:
         calendar = DEFAULT_CALENDAR
@@ -211,7 +230,8 @@ async def save_config(
         battery_position = clock.DEFAULT_BATTERY_POSITION
     db.update_user_settings(username, font, location, calendar, sleeptime, blank_val, clock_style,
                             sleep_start, sleep_end, battery_display, battery_position,
-                            min(clock.MAX_BATCH_MINUTES, max(clock.MIN_BATCH_MINUTES, batch_minutes)))
+                            min(clock.MAX_BATCH_MINUTES, max(clock.MIN_BATCH_MINUTES, batch_minutes)),
+                            language)
     return RedirectResponse(url="/config?saved=1", status_code=303)
 
 
@@ -250,6 +270,7 @@ async def get_clock(
     clock_style: Optional[str] = Query(None),
     fw: Optional[str] = Query(None, description="Firmware version of the device, e.g. 1.4.0"),
     at: Optional[int] = Query(None, description="Unix time of the minute to render (for batch fetching)"),
+    language: Optional[str] = Query(None, description="Clock language: he, en, fr or es"),
 ) -> Response:
     # The minute to render: a requested one (battery save mode fetches several
     # minutes ahead), or now plus the display lag
@@ -289,7 +310,12 @@ async def get_clock(
         img_bytes = await run_in_threadpool(clock.generate_blank_image)
         return Response(content=img_bytes, media_type="image/png", headers=headers)
 
+    selected_lang = language or user_cfg.get("language", languages.DEFAULT_LANGUAGE)
+    if selected_lang not in languages.LANGUAGES:
+        selected_lang = languages.DEFAULT_LANGUAGE
     selected_font = font or user_cfg.get("font", DEFAULT_FONT)
+    if selected_font not in clock.fonts_for_language(selected_lang):
+        selected_font = DEFAULT_FONT
     selected_loc = location or user_cfg.get("location", DEFAULT_LOCATION)
     selected_cal = calendar or user_cfg.get("calendar", DEFAULT_CALENDAR)
     selected_sleep = sleeptime or user_cfg.get("sleeptime", DEFAULT_SLEEPTIME)
@@ -326,8 +352,9 @@ async def get_clock(
         font_name=selected_font,
         sleep_time=show_night,
         weather=w,
-        jewish_date=jdate,
+        jewish_parts=jdate,
         clock_style=selected_style,
+        language=selected_lang,
         battery=battery,
         charging=charging == "1",
         battery_display=selected_batt_display,

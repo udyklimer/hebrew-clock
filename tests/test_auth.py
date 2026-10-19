@@ -61,6 +61,7 @@ def test_legacy_plaintext_password_is_migrated():
 
 
 def test_register_rejects_short_password(client):
+    client.cookies.set("ui_lang", "en")
     resp = _register(client, "shortpw", "abc")
     assert resp.status_code == 200
     assert "at least" in resp.text
@@ -69,6 +70,7 @@ def test_register_rejects_short_password(client):
 
 def test_register_rejects_duplicate(client):
     _register(client, "dupuser")
+    client.cookies.set("ui_lang", "en")
     resp = _register(client, "dupuser")
     assert resp.status_code == 200
     assert "already taken" in resp.text
@@ -93,10 +95,11 @@ def test_login_then_config(client):
 def test_wrong_password_sets_no_cookie(client):
     _register(client, "wrongpw")
     client.cookies.clear()
+    client.cookies.set("ui_lang", "en")
     resp = client.post(
         "/login", data={"username": "wrongpw", "password": "nope-nope"}
     )
-    assert "Invalid username or password" in resp.text
+    assert "Wrong user name or password" in resp.text
     assert security.SESSION_COOKIE not in client.cookies
 
 
@@ -138,7 +141,7 @@ def test_save_config_sanitizes_input(client):
         "sleeptime": "0", "blank": "1", "clock_style": "analog",
         "sleep_start": "22:00", "sleep_end": "06:00",
         "battery_display": "none", "battery_position": "left",
-        "batch_minutes": 1,
+        "batch_minutes": 1, "language": "he",
     }
 
 
