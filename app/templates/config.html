@@ -81,7 +81,7 @@
           <label for="font">{{ t.font }}</label>
           <select name="font" id="font">
             {% for f in fonts %}
-              <option value="{{ f }}" {% if f == selected_font %}selected{% endif %}>{{ f }}</option>
+              <option value="{{ f }}" {% if f == selected_font %}selected{% endif %}>{{ font_labels.get(f, f) }}</option>
             {% endfor %}
           </select>
           <p class="hint" style="margin-top: 0.4rem;">{{ t.font_hint }}</p>
@@ -275,6 +275,7 @@
     // Fonts that can write each clock language; the list follows the language
     const FONTS_BY_LANGUAGE = {{ fonts_by_language | tojson }};
     const DEFAULT_FONT = {{ default_font | tojson }};
+    const FONT_LABELS = {{ font_labels | tojson }};
     const fontSelect = document.getElementById('font');
     document.getElementById('language').addEventListener('change', e => {
       const fonts = FONTS_BY_LANGUAGE[e.target.value] || [];
@@ -282,7 +283,7 @@
       const keep = fonts.includes(current) ? current : (fonts.includes(DEFAULT_FONT) ? DEFAULT_FONT : fonts[0]);
       fontSelect.innerHTML = '';
       for (const f of fonts) {
-        const option = new Option(f, f, false, f === keep);
+        const option = new Option(FONT_LABELS[f] || f, f, false, f === keep);
         fontSelect.add(option);
       }
       updatePreview();

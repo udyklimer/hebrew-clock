@@ -35,6 +35,19 @@ def test_time_phrases(lang, h, m, lines, period):
     assert lang.time_text(h, m) == (lines, period)
 
 
+@pytest.mark.parametrize("code, raw, expected", [
+    ("en", "quarter to eight", "Quarter To Eight"),
+    ("en", "twenty-three minutes", "Twenty-Three Minutes"),
+    ("en", "seven o'clock", "Seven O'Clock"),
+    ("fr", "de l'après-midi", "De L'Après-Midi"),
+    ("fr", "1er août", "1er Août"),          # no capital after a digit
+    ("es", "las ocho menos cuarto", "Las Ocho Menos Cuarto"),
+    ("he", "שֶׁבַע וָרֶבַע", "שֶׁבַע וָרֶבַע"),  # Hebrew has no capitals
+])
+def test_every_word_capitalised(code, raw, expected):
+    assert languages.styled(languages.get(code), raw) == expected
+
+
 def test_every_minute_has_text_in_every_language():
     for code, lang in languages.LANGUAGES.items():
         for h in range(24):
@@ -53,6 +66,20 @@ def test_fonts_follow_the_letters_each_language_needs():
     assert "makabiyg-webfont" in en_fonts and "makabiyg-webfont" not in fr_fonts  # no accents
     assert "ankaclm-bold-webfont" in he_fonts and "ankaclm-bold-webfont" not in en_fonts
     assert clock.DEFAULT_FONT in he_fonts & en_fonts & fr_fonts
+
+
+def test_font_display_names():
+    names = clock.font_display_names()
+    assert set(names) == clock.VALID_FONTS
+    assert len(set(names.values())) == len(names)                 # all different
+    assert names["OpenSans-VariableFont_wdth,wght"] == "Open Sans"
+    assert names["ankaclm-bold-webfont"] == "Anka CLM"            # keeps the font's capitals
+    assert names["Merriweather-Bold"] == "Merriweather"
+    # Same family twice: the style tells them apart
+    assert names["comixno2clm_bold-webfont"] == "Comix No2 CLM Bold"
+    assert names["comixno2clm_medium-webfont"] == "Comix No2 CLM Medium"
+    for name in names.values():
+        assert ".ttf" not in name and "webfont" not in name.lower()
 
 
 # ── Settings ──────────────────────────────────────────

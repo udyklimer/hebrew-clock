@@ -14,7 +14,7 @@ A Hebrew word-clock server for e-paper displays. It renders the current Israel t
 - **User accounts.** Each user registers on the website and gets their own saved clock settings.
 - **Settings page with live preview.** Font, city, calendar, clock style, sleep hours, battery display and blank screen, with a preview image that updates as you change them.
 - **One URL per device.** The device asks for `/clock.png?user=<name>` and the server applies that user's saved settings, so the look of the clock is changed from the website, not on the device.
-- **Four clock languages.** Hebrew, English, French and Spanish, each written the way people say the time ("quarter to eight", "huit heures moins le quart", "las ocho menos cuarto").
+- **Four clock languages.** Hebrew, English, French and Spanish, each written the way people say the time ("Quarter To Eight", "Huit Heures Moins Le Quart", "Las Ocho Menos Cuarto"). In English, French and Spanish every word on the display starts with a capital letter.
 - **Settings page in Hebrew or English,** switched with the flags at the top.
 - **Clock style.** Analog face, digital `HH:mm`, or no clock (larger text only).
 - **Sleep hours.** The night image is shown between a start and end time that each user sets.
@@ -67,7 +67,7 @@ Log in at the server's home page to reach the settings page.
 | Setting | Options | Notes |
 |---------|---------|-------|
 | Clock language | עברית / English / Français / Español | The language of the time, date, weather and night screen. |
-| Font | fonts that can write the chosen language | See [Fonts](#fonts). The list changes with the clock language. |
+| Font | fonts that can write the chosen language | See [Fonts](#fonts). The list changes with the clock language and shows each font's own name (e.g. "Open Sans", "Anka CLM"). |
 | Location | city name | Used for the weather (from [wttr.in](https://wttr.in)). |
 | Calendar | Gregorian / Jewish | The Jewish date comes from [hebcal.com](https://www.hebcal.com). |
 | Show Clock | Analog / Digital / None | Digital shows `HH:mm`; None leaves only the Hebrew text, drawn larger. |
@@ -153,7 +153,9 @@ Fonts are kept in folders by alphabet:
 | `fonts/hebrew/` | Hebrew only, mostly without vowel marks: Anka, Comix No2, Gan, Makabi, Noot, Stopmotion | Hebrew (Makabi and Noot also English) |
 | `fonts/latin/` | Latin with accents: Lato, Merriweather, Montserrat, Poppins, Roboto | English, French, Spanish |
 
-The folders are only for order. For each language the server checks which fonts contain every letter that language's clock texts use (for example ñ for Spanish, ç and è for French), and the settings page lists only those. To add a font, drop the `.ttf` file into the matching folder and restart the server (or rebuild the image); it appears under its file name.
+The folders are only for order. For each language the server checks which fonts contain every letter that language's clock texts use (for example ñ for Spanish, ç and è for French), and the settings page lists only those. To add a font, drop the `.ttf` file into the matching folder and restart the server (or rebuild the image).
+
+The settings page shows each font by the family name stored inside the font file, with each word capitalised ("Open Sans", "Anka CLM"). The style is added only when two fonts share a family ("Comix No2 CLM Bold", "Comix No2 CLM Medium"), and a font without a stored name is shown by a cleaned-up file name. The saved setting and the `font` URL parameter still use the file name without `.ttf`.
 
 A font does not have to be complete. If it lacks vowel marks, the geresh marks used in Hebrew dates, the minus sign, the degree sign, the colon or the percent sign, the server drops, replaces or draws those itself. For a font with no vowel marks, Hebrew words are written in their full unpointed spelling (for example מעונן, בבוקר, שתיים).
 

@@ -15,6 +15,9 @@ WEATHER = {
 # A phrase longer than this is split over two lines
 _ONE_LINE_MAX = 18
 
+# Every word on the display starts with a capital letter
+TITLE_CASE = True
+
 
 def _number(n: int) -> str:
     if n < 20:

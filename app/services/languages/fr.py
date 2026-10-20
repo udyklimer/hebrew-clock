@@ -15,6 +15,9 @@ WEATHER = {
 
 _ONE_LINE_MAX = 18
 
+# Every word on the display starts with a capital letter
+TITLE_CASE = True
+
 
 def _number(n: int) -> str:
     """1-59 in words, feminine ('une'), as used for minutes and hours."""

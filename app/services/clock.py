@@ -191,7 +191,49 @@ def fonts_for_language(code: str) -> list[str]:
         ch for text in languages.all_texts(code) for ch in text
         if not ch.isspace() and ch not in optional
     )
-    return sorted((name for name in VALID_FONTS if _has_chars(name, needed)), key=str.lower)
+    names = font_display_names()
+    return sorted((name for name in VALID_FONTS if _has_chars(name, needed)),
+                  key=lambda name: names[name].lower())
+
+
+_FILE_NAME_NOISE = re.compile(r"-?(webfont|VariableFont_[\w,]+)$", re.IGNORECASE)
+
+
+def _capitalise_words(text: str) -> str:
+    """Capitalises the first letter of each word, keeping the rest ("Anka CLM")."""
+    return " ".join(word[:1].upper() + word[1:] for word in text.split())
+
+
+@functools.lru_cache(maxsize=None)
+def font_display_names() -> dict[str, str]:
+    """File name → name to show on the settings page.
+
+    Uses the family name stored in the font ("Open Sans", "Anka CLM"), adding
+    the style only when two fonts share a family ("Comix No2 CLM Medium").
+    Falls back to a cleaned-up file name when the font has no name.
+    """
+    family_style = {}
+    for stem, path in FONT_PATHS.items():
+        try:
+            family, style = ImageFont.truetype(str(path), 20).getname()
+        except Exception:
+            family, style = None, None
+        if not family:
+            family = re.sub(r"[-_]+", " ", _FILE_NAME_NOISE.sub("", stem))
+        # Drop optical sizes such as "18pt" from the style ("Bold 18pt" → "Bold")
+        style = " ".join(w for w in (style or "").split() if not re.fullmatch(r"\d+pt", w))
+        family_style[stem] = (_capitalise_words(family), _capitalise_words(style))
+
+    families = [family for family, _ in family_style.values()]
+    names = {}
+    for stem, (family, style) in family_style.items():
+        shared = families.count(family) > 1
+        names[stem] = f"{family} {style}".strip() if shared and style else family
+    # Still the same name twice? Fall back to the file name to tell them apart
+    for stem, name in names.items():
+        if list(names.values()).count(name) > 1:
+            names[stem] = f"{name} ({stem})"
+    return names
 
 
 def _adapt_text(text: str, font_name: str) -> str:
@@ -485,7 +527,8 @@ def _generate_night_image(font_name: str, language: str = languages.DEFAULT_LANG
             logger.warning("sleeping image error: {}", exc)
 
     # Title and subtitle, fitted into the space left of the picture
-    title, subtitle = (_adapt_text(t, font_name) for t in languages.get(language).night_texts())
+    lang = languages.get(language)
+    title, subtitle = (_adapt_text(languages.styled(lang, t), font_name) for t in lang.night_texts())
     box = (20, H // 2 - 110, W - 380 - 40, H // 2 + 110)
     placed = _layout_lines(draw, [(title, 72), (subtitle, 44)], box, font_name, gap=40)
     for (text, font, cx, cy), fill in zip(placed, (255, 180)):
@@ -529,9 +572,13 @@ def generate_clock_image(
     draw.rectangle([PAD1, PAD1, W - PAD1, H - PAD1], outline=0, width=3)
     draw.rectangle([PAD2, PAD2, W - PAD2, H - PAD2], outline=0, width=1)
 
+    def text(value: str) -> str:
+        """A text as drawn: the language's capitalisation, then the font's fallbacks."""
+        return _adapt_text(languages.styled(lang, value), fn)
+
     lines, period = lang.time_text(h24, m)
-    time_lines  = [_adapt_text(l, fn) for l in lines]
-    period_line = _adapt_text(period, fn)
+    time_lines  = [text(l) for l in lines]
+    period_line = text(period)
 
     sep_y     = H - 105
     bar_cy    = H - 52
@@ -576,16 +623,16 @@ def generate_clock_image(
     # ── Bottom bar ──
     cell_top, cell_bottom = sep_y + 5, H - PAD2 - 5
 
-    day_name  = _adapt_text(lang.day_name(now.weekday()), fn)
+    day_name  = text(lang.day_name(now.weekday()))
     if jewish_parts:
-        jewish_date = "\n".join(lang.jewish_date(*jewish_parts))
+        jewish_date = "\n".join(text(part) for part in lang.jewish_date(*jewish_parts))
     if jewish_date:
         jewish_date = _adapt_text(jewish_date, fn)
     if jewish_date and "\n" in jewish_date:
         date_str, year_str = jewish_date.split("\n", 1)
         date_lines = [(day_name, 28), (date_str, 26), (year_str, 22)]
     else:
-        date_str = jewish_date if jewish_date else _adapt_text(lang.date_text(now.day, now.month), fn)
+        date_str = jewish_date if jewish_date else text(lang.date_text(now.day, now.month))
         date_lines = [(day_name, 34), (date_str, 34)]
     draw_block(date_lines, (bar_left + 5, cell_top, div_x - 5, cell_bottom), gap=5)
 
@@ -598,7 +645,7 @@ def generate_clock_image(
 
         # Temperature and description share the right half of the cell, clear of the icon
         temp = weather["temp"]
-        desc = _adapt_text(lang.weather_text(weather.get("icon_key", "cloud")), fn)
+        desc = text(lang.weather_text(weather.get("icon_key", "cloud")))
         text_box = ((div_x2 + bar_right) // 2 + 4, cell_top, bar_right - 4, cell_bottom)
         (temp_str, temp_font, cx, temp_cy), (_, desc_font, _, desc_cy) = _layout_lines(
             draw, [(str(temp), 40), (desc, 34)], text_box, fn, gap=5)

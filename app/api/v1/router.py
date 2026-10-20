@@ -164,6 +164,7 @@ async def config_page(
             "selected_language": language,
             "fonts": fonts_by_language.get(language, []),
             "fonts_by_language": fonts_by_language,
+            "font_labels": clock.font_display_names(),
             "default_font": DEFAULT_FONT,
             "selected_font": user_settings.get("font", DEFAULT_FONT),
             "selected_location": user_settings.get("location", DEFAULT_LOCATION),
