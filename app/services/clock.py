@@ -281,10 +281,24 @@ def _draw_temperature(draw: ImageDraw.Draw, cx: float, cy: float, temp: int,
                      outline=0, width=2)
 
 
-def _png_bytes(img: Image.Image) -> bytes:
-    """Converts PIL Image to 1-bit PNG byte buffer."""
+# The 4 shades of gray the panel can show, darkest first
+GRAY_LEVELS = (0, 85, 170, 255)
+_GRAY_PALETTE = Image.new("P", (1, 1))
+_GRAY_PALETTE.putpalette([v for level in GRAY_LEVELS for v in (level, level, level)] + [0, 0, 0] * 252)
+
+
+def _png_bytes(img: Image.Image, gray: bool = False) -> bytes:
+    """Converts the drawn image to a PNG for the panel.
+
+    Black and white: 1 bit per pixel. Gray: the 4 shades in GRAY_LEVELS,
+    2 bits per pixel, which keeps the smooth (anti-aliased) edges of text.
+    """
     buf = io.BytesIO()
-    img.convert("1", dither=Image.Dither.NONE).save(buf, format="PNG", optimize=True)
+    if gray:
+        shades = img.convert("RGB").quantize(palette=_GRAY_PALETTE, dither=Image.Dither.NONE)
+        shades.save(buf, format="PNG", optimize=True, bits=2)
+    else:
+        img.convert("1", dither=Image.Dither.NONE).save(buf, format="PNG", optimize=True)
     buf.seek(0)
     return buf.read()
 
@@ -494,7 +508,8 @@ def _draw_battery(draw: ImageDraw.Draw, percent: int, charging: bool, display: s
 
 # ── Image generators ──────────────────────────────────
 
-def _generate_night_image(font_name: str, language: str = languages.DEFAULT_LANGUAGE) -> bytes:
+def _generate_night_image(font_name: str, language: str = languages.DEFAULT_LANGUAGE,
+                          gray: bool = False) -> bytes:
     """Generates night screen layout when sleep_time is True."""
     W, H = EPD_WIDTH, EPD_HEIGHT
     img = Image.new("L", (W, H), color=0)
@@ -533,7 +548,7 @@ def _generate_night_image(font_name: str, language: str = languages.DEFAULT_LANG
     placed = _layout_lines(draw, [(title, 72), (subtitle, 44)], box, font_name, gap=40)
     for (text, font, cx, cy), fill in zip(placed, (255, 180)):
         _draw_centered(draw, text, font, cx, cy, fill=fill)
-    return _png_bytes(img)
+    return _png_bytes(img, gray)
 
 
 def generate_clock_image(
@@ -549,8 +564,9 @@ def generate_clock_image(
     battery_display:  str   = DEFAULT_BATTERY_DISPLAY,
     battery_position: str   = DEFAULT_BATTERY_POSITION,
     now: datetime.datetime | None = None,
+    gray: bool = False,
 ) -> bytes:
-    """Generates the clock screen image.
+    """Generates the clock screen image (gray: 4 shades instead of black and white).
 
     jewish_parts is (day, month name, year) from hebcal; it is written in the
     clock's language. jewish_date is an already formatted 'date\nyear' string.
@@ -559,7 +575,7 @@ def generate_clock_image(
     lang = languages.get(language)
 
     if sleep_time:
-        return _generate_night_image(fn, language)
+        return _generate_night_image(fn, language, gray)
 
     now  = now or get_israel_time()
     h24, m = now.hour, now.minute
@@ -653,7 +669,7 @@ def generate_clock_image(
                           temp, temp_font, fn)
         _draw_centered(draw, desc, desc_font, cx, desc_cy)
 
-    return _png_bytes(img)
+    return _png_bytes(img, gray)
 
 
 def generate_blank_image() -> bytes:

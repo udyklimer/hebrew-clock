@@ -141,7 +141,7 @@ def test_save_config_sanitizes_input(client):
         "sleeptime": "0", "blank": "1", "clock_style": "analog",
         "sleep_start": "22:00", "sleep_end": "06:00",
         "battery_display": "none", "battery_position": "left",
-        "batch_minutes": 1, "language": "he",
+        "batch_minutes": 1, "language": "he", "grayscale": "0",
     }
 
 

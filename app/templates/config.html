@@ -48,6 +48,32 @@
     .url-row input { flex: 1; min-width: 0; direction: ltr; font-family: monospace; font-size: 0.85rem; background: #f8f9fa; }
     .btn-copy { padding: 0 1rem; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
     .btn-copy.copied { background: #28a745; }
+    .settings-fields { border: 0; padding: 0; margin: 0; min-width: 0; transition: opacity 0.2s; }
+    .settings-fields.inactive { opacity: 0.45; pointer-events: none; }
+    .target-box { background: #f8f9fa; border-radius: 8px; padding: 0.8rem; }
+    .devices-card > label { margin-bottom: 0.8rem; }
+    .device { border-top: 1px solid #eee; padding: 0.8rem 0; }
+    .device.current { background: #f0f9f2; margin: 0 -1rem; padding: 0.8rem 1rem; }
+    .device-head { display: flex; align-items: center; gap: 0.6rem; }
+    .device-tag { font-size: 0.75rem; color: #555; background: #eef1f4; border-radius: 4px; padding: 0.1rem 0.4rem; }
+    .device-facts { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; font-size: 0.85rem; color: #444; margin: 0.4rem 0; }
+    .device-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+    .device-link { color: #007bff; font-size: 0.85rem; font-weight: 600; text-decoration: none; }
+    .device-rename { display: flex; gap: 0.4rem; flex: 1; min-width: 200px; margin: 0; }
+    .device-rename input { flex: 1; min-width: 0; padding: 0.35rem 0.6rem; font-size: 0.85rem; }
+    .device-rename button, .device-remove { padding: 0.35rem 0.7rem; border: 1px solid #ccc; background: white; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+    .device-remove { color: #dc3545; border-color: #f1aeb5; }
+
+    /* Phones: the preview goes first and stays pinned at the top while the
+       settings scroll under it, so every change is visible right away */
+    @media (max-width: 860px) {
+      body { align-items: flex-start; padding: 0.5rem; }
+      .layout { flex-direction: column; align-items: stretch; gap: 1rem; }
+      .card { width: 100%; padding: 1.2rem; }
+      .preview-col { display: contents; }
+      .preview-frame { order: -1; position: sticky; top: 0.5rem; z-index: 10; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+      .url-card { order: 1; }
+    }
   </style>
 </head>
 <body>
@@ -67,7 +93,29 @@
         <div class="saved-msg">{{ t.saved }}</div>
       {% endif %}
 
+      {% if devices %}
+        <div class="form-group target-box">
+          <label for="settings-target">{{ t.settings_for }}</label>
+          <select id="settings-target">
+            <option value="" {% if not selected_device %}selected{% endif %}>{{ t.all_devices }}</option>
+            {% for d in devices %}
+              <option value="{{ d.id }}" {% if selected_device and selected_device.id == d.id %}selected{% endif %}>{{ d.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+
       <form method="post" action="/config">
+        {% if selected_device %}
+          <input type="hidden" name="device" value="{{ selected_device.id }}">
+          <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+            <input type="checkbox" name="own_settings" id="own_settings" value="1" {% if selected_device.own_settings %}checked{% endif %} style="width: 18px; height: 18px; cursor: pointer;" />
+            <label for="own_settings" style="margin-bottom: 0; cursor: pointer;">{{ t.own_settings }}</label>
+          </div>
+          <p class="hint" style="margin: -0.6rem 0 1.2rem;">{{ t.own_settings_hint }}</p>
+        {% endif %}
+
+        <fieldset id="settings-fields" class="settings-fields">
         <div class="form-group">
           <label for="language">{{ t.clock_language }}</label>
           <select name="language" id="language">
@@ -166,10 +214,21 @@
           <p class="hint" style="margin-top: 0.4rem;">{{ t.batch_hint }}</p>
         </div>
 
+        <div class="form-group">
+          <label for="grayscale">{{ t.grayscale }}</label>
+          <select name="grayscale" id="grayscale">
+            <option value="0" {% if not selected_grayscale %}selected{% endif %}>{{ t.gray_off }}</option>
+            <option value="1" {% if selected_grayscale %}selected{% endif %}>{{ t.gray_on }}</option>
+          </select>
+          <p class="hint" style="margin-top: 0.4rem;">{{ t.gray_hint }}</p>
+        </div>
+
         <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
           <input type="checkbox" name="blank" id="blank" value="1" {% if selected_blank %}checked{% endif %} style="width: 18px; height: 18px; cursor: pointer;" />
           <label for="blank" style="margin-bottom: 0; cursor: pointer;">{{ t.blank }}</label>
         </div>
+
+        </fieldset>
 
         <button type="submit" class="btn-save">{{ t.save }}</button>
       </form>
@@ -193,20 +252,54 @@
         <p class="hint">{{ t.device_hint }} <strong dir="ltr">{{ username }}</strong>.</p>
 
         <div class="fw-info">
-          {% if device_fw %}
-            <div>{{ t.fw_device }} <strong dir="ltr">{{ device_fw }}</strong>
-              {% if device_seen %}<span class="fw-seen">({{ t.fw_seen }} <span dir="ltr">{{ device_seen }}</span>)</span>{% endif %}
-            </div>
-          {% else %}
-            <div>{{ t.fw_none }}</div>
+          {# Devices with an ID show their own version below; this is for older firmware #}
+          {% if not devices %}
+            {% if device_fw %}
+              <div>{{ t.fw_device }} <strong dir="ltr">{{ device_fw }}</strong>
+                {% if device_seen %}<span class="fw-seen">({{ t.fw_seen }} <span dir="ltr">{{ device_seen }}</span>)</span>{% endif %}
+              </div>
+            {% else %}
+              <div>{{ t.fw_none }}</div>
+            {% endif %}
           {% endif %}
           {% if latest_fw %}
             <div>{{ t.fw_latest }} <strong dir="ltr">{{ latest_fw }}</strong>
-              {% if update_waiting %}<span class="fw-badge">{{ t.fw_waiting }}</span>{% endif %}
+              {% if not devices and update_waiting %}<span class="fw-badge">{{ t.fw_waiting }}</span>{% endif %}
             </div>
           {% endif %}
         </div>
       </div>
+
+      {# Listed only with two or more devices; a single device needs no names #}
+      {% if devices %}
+      <div class="url-card devices-card">
+        <label>{{ t.devices_heading }}</label>
+        {% for d in devices %}
+          <div class="device{% if selected_device and selected_device.id == d.id %} current{% endif %}">
+            <div class="device-head">
+              <strong>{{ d.name }}</strong>
+              <span class="device-tag">{{ t.device_own if d.own_settings else t.device_shared }}</span>
+            </div>
+            <div class="device-facts">
+              <span>{{ t.device_id }} <span dir="ltr">{{ d.id }}</span></span>
+              {% if d.fw %}<span>{{ t.fw_device }} <span dir="ltr">{{ d.fw }}</span>{% if d.outdated %} <span class="fw-badge">{{ t.fw_waiting }}</span>{% endif %}</span>{% endif %}
+              {% if d.battery is not none %}<span>{{ t.device_battery }} <span dir="ltr">{{ d.battery }}%</span>{% if d.charging %} ({{ t.device_charging }}){% endif %}</span>{% endif %}
+              {% if d.seen %}<span class="fw-seen">{{ t.fw_seen }} <span dir="ltr">{{ d.seen }}</span></span>{% endif %}
+            </div>
+            <div class="device-actions">
+              <a href="/config?device={{ d.id }}" class="device-link">{{ t.device_edit }}</a>
+              <form method="post" action="/devices/{{ d.id }}/rename" class="device-rename">
+                <input type="text" name="name" value="{{ d.custom_name }}" placeholder="{{ t.device_name_placeholder }}" maxlength="40">
+                <button type="submit">{{ t.device_rename }}</button>
+              </form>
+              <form method="post" action="/devices/{{ d.id }}/delete" onsubmit="return confirm({{ t.device_remove_confirm | tojson | forceescape }});">
+                <button type="submit" class="device-remove">{{ t.device_remove }}</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -235,6 +328,7 @@
         battery_position: document.getElementById('battery_position').value,
         battery: '75',  // sample value; the real one comes from the device
         blank:     document.getElementById('blank').checked ? '1' : '0',
+        gray:      document.getElementById('grayscale').value,
       });
       return '/clock.png?' + p.toString();
     }
@@ -265,7 +359,7 @@
       debounceTimer = setTimeout(updatePreview, 500);
     }
 
-    ['font', 'calendar', 'clock_style', 'sleeptime', 'blank', 'battery_display', 'battery_position'].forEach(id =>
+    ['font', 'calendar', 'clock_style', 'sleeptime', 'blank', 'battery_display', 'battery_position', 'grayscale'].forEach(id =>
       document.getElementById(id).addEventListener('change', updatePreview)
     );
     ['location', 'sleep_start', 'sleep_end'].forEach(id =>
@@ -288,6 +382,24 @@
       }
       updatePreview();
     });
+
+    // "Settings for": switch between all devices and one device
+    const target = document.getElementById('settings-target');
+    if (target) {
+      target.addEventListener('change', e => {
+        window.location = e.target.value ? '/config?device=' + encodeURIComponent(e.target.value) : '/config';
+      });
+    }
+
+    // A device without its own settings follows the shared ones: grey them out
+    const ownSettings = document.getElementById('own_settings');
+    function toggleOwnSettings() {
+      document.getElementById('settings-fields').classList.toggle('inactive', !ownSettings.checked);
+    }
+    if (ownSettings) {
+      ownSettings.addEventListener('change', toggleOwnSettings);
+      toggleOwnSettings();
+    }
 
     // Show the battery save value while the slider moves
     document.getElementById('batch_minutes').addEventListener('input', e => {

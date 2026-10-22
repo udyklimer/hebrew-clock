@@ -52,6 +52,11 @@ def _page(request: Request, template: str, context: dict) -> Response:
     })
 
 
+def _local_time(moment) -> str:
+    """A UTC time as Israel local time, e.g. '21/10/2026 19:14'."""
+    return moment.astimezone(clock.ISRAEL_TZ).strftime("%d/%m/%Y %H:%M")
+
+
 def _login_page(request: Request, error_key: str | None = None, **fmt) -> Response:
     error = ui_text.texts(request)[error_key].format(**fmt) if error_key else None
     return _page(request, "index.html", {"error": error})
@@ -140,18 +145,48 @@ async def config_page(
     if not username:
         return RedirectResponse(url="/", status_code=303)
     
-    user_settings = db.get_user_settings(username)
+    t = ui_text.texts(request)
+
+    # Which settings the form edits: the user's (all devices), or one device's.
+    # Devices are listed (and editable one by one) only when there are two or more.
+    all_devices = db.list_devices(username)
+    multi_device = len(all_devices) > 1
+    device_id = db.clean_device_id(request.query_params.get("device"))
+    selected_device = db.get_device(username, device_id) if device_id and multi_device else None
+    user_settings = db.get_effective_settings(
+        username, selected_device["device_id"] if selected_device else None)
 
     # Firmware: what the device last reported, and the latest release
     device_fw, device_seen = db.get_device_firmware(username)
     if device_seen:
-        device_seen = device_seen.astimezone(clock.ISRAEL_TZ).strftime("%d/%m/%Y %H:%M")
+        device_seen = _local_time(device_seen)
     release = await firmware_svc.latest_release(request.app.state.http_client)
     latest_fw = release["version"] if release else None
-    device_parsed = firmware_svc.parse_version(device_fw)
-    update_waiting = bool(
-        latest_fw and device_parsed and firmware_svc.parse_version(latest_fw) > device_parsed
-    )
+
+    def is_outdated(version: str | None) -> bool:
+        parsed = firmware_svc.parse_version(version)
+        return bool(latest_fw and parsed and firmware_svc.parse_version(latest_fw) > parsed)
+
+    update_waiting = is_outdated(device_fw)
+
+    devices = [{
+        "id": d["device_id"],
+        "name": d["name"] or f"{t['device_default_name']} {d['device_id'][-4:]}",
+        "custom_name": d["name"] or "",
+        "fw": d["fw"],
+        "outdated": is_outdated(d["fw"]),
+        "seen": _local_time(d["last_seen"]) if d["last_seen"] else None,
+        "battery": clock.battery_percent_from_mv(d["battery_mv"]) if d["battery_mv"] else None,
+        "charging": d["charging"],
+        "own_settings": d["settings"] is not None,
+    } for d in all_devices]
+    selected = next((d for d in devices if selected_device and d["id"] == selected_device["device_id"]), None)
+
+    # A single device is not listed: show its version where older firmware's goes
+    if len(devices) == 1:
+        device_fw, device_seen, update_waiting = devices[0]["fw"], devices[0]["seen"], devices[0]["outdated"]
+    if not multi_device:
+        devices = []
 
     language = user_settings.get("language", languages.DEFAULT_LANGUAGE)
     fonts_by_language = {code: clock.fonts_for_language(code) for code in languages.LANGUAGES}
@@ -179,11 +214,14 @@ async def config_page(
             "max_batch_minutes": clock.MAX_BATCH_MINUTES,
             "selected_blank": user_settings.get("blank", DEFAULT_BLANK) == "1",
             "selected_clock_style": user_settings.get("clock_style", clock.DEFAULT_CLOCK_STYLE),
+            "selected_grayscale": user_settings.get("grayscale", "0") == "1",
             "saved": request.query_params.get("saved") == "1",
             "device_fw": device_fw,
             "device_seen": device_seen,
             "latest_fw": latest_fw,
             "update_waiting": update_waiting,
+            "devices": devices,
+            "selected_device": selected,
         }
     )
 
@@ -202,12 +240,15 @@ async def save_config(
     blank: Optional[str] = Form(None),
     clock_style: str = Form(clock.DEFAULT_CLOCK_STYLE),
     language: str = Form(languages.DEFAULT_LANGUAGE),
+    grayscale: str = Form("0"),
+    device: Optional[str] = Form(None),
+    own_settings: Optional[str] = Form(None),
     user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
 ) -> Response:
     username = read_session(user_session)
     if not username:
         return RedirectResponse(url="/", status_code=303)
-    
+
     if language not in languages.LANGUAGES:
         language = languages.DEFAULT_LANGUAGE
     if font not in clock.fonts_for_language(language):
@@ -229,11 +270,53 @@ async def save_config(
         battery_display = clock.DEFAULT_BATTERY_DISPLAY
     if battery_position not in clock.VALID_BATTERY_POSITIONS:
         battery_position = clock.DEFAULT_BATTERY_POSITION
-    db.update_user_settings(username, font, location, calendar, sleeptime, blank_val, clock_style,
-                            sleep_start, sleep_end, battery_display, battery_position,
-                            min(clock.MAX_BATCH_MINUTES, max(clock.MIN_BATCH_MINUTES, batch_minutes)),
-                            language)
+    values = {
+        "font": font, "location": location, "calendar": calendar, "sleeptime": sleeptime,
+        "blank": blank_val, "clock_style": clock_style,
+        "sleep_start": sleep_start, "sleep_end": sleep_end,
+        "battery_display": battery_display, "battery_position": battery_position,
+        "batch_minutes": min(clock.MAX_BATCH_MINUTES, max(clock.MIN_BATCH_MINUTES, batch_minutes)),
+        "language": language,
+        "grayscale": "1" if grayscale == "1" else "0",
+    }
+
+    # One device: its own settings, or back to the user's
+    device_id = db.clean_device_id(device)
+    if device_id and db.get_device(username, device_id) and len(db.list_devices(username)) > 1:
+        db.set_device_settings(username, device_id, values if own_settings == "1" else None)
+        return RedirectResponse(url=f"/config?device={device_id}&saved=1", status_code=303)
+
+    db.update_user_settings(username, **values)
     return RedirectResponse(url="/config?saved=1", status_code=303)
+
+
+@router.post("/devices/{device_id}/rename", include_in_schema=False)
+async def rename_device(
+    device_id: str,
+    name: str = Form(""),
+    user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE),
+) -> Response:
+    username = read_session(user_session)
+    if not username:
+        return RedirectResponse(url="/", status_code=303)
+    device_id = db.clean_device_id(device_id)
+    if device_id:
+        db.rename_device(username, device_id, name)
+    return RedirectResponse(url="/config", status_code=303)
+
+
+@router.post("/devices/{device_id}/delete", include_in_schema=False)
+async def delete_device(
+    device_id: str,
+    user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE),
+) -> Response:
+    username = read_session(user_session)
+    if not username:
+        return RedirectResponse(url="/", status_code=303)
+    device_id = db.clean_device_id(device_id)
+    if device_id:
+        db.delete_device(username, device_id)
+    return RedirectResponse(url="/config", status_code=303)
 
 
 @router.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
@@ -272,6 +355,8 @@ async def get_clock(
     fw: Optional[str] = Query(None, description="Firmware version of the device, e.g. 1.4.0"),
     at: Optional[int] = Query(None, description="Unix time of the minute to render (for batch fetching)"),
     language: Optional[str] = Query(None, description="Clock language: he, en, fr or es"),
+    device: Optional[str] = Query(None, description="Device ID, e.g. the chip's MAC address"),
+    gray: Optional[str] = Query(None, description="1 for 4 shades of gray, 0 for black and white"),
 ) -> Response:
     # The minute to render: a requested one (battery save mode fetches several
     # minutes ahead), or now plus the display lag
@@ -287,9 +372,14 @@ async def get_clock(
     headers = {"Cache-Control": "no-cache"}
     headers.update(await firmware_svc.check_update(fw, request.app.state.http_client))
 
-    # Priority: explicit query params > DB settings for user > fallback defaults
+    # Priority: explicit query params > the device's own settings > the user's
+    # settings > fallback defaults
     if user:
-        user_cfg = db.get_user_settings(user)
+        device_id = db.clean_device_id(device)
+        if device_id:
+            db.record_device(user, device_id, fw, battery_mv,
+                             None if charging is None else charging == "1")
+        user_cfg = db.get_effective_settings(user, device_id)
         if fw:
             db.record_device_firmware(user, fw)
     else:
@@ -303,6 +393,9 @@ async def get_clock(
         }
     # Battery save mode: how many minutes of images the device should fetch at once
     headers["X-Batch-Minutes"] = str(user_cfg.get("batch_minutes", clock.DEFAULT_BATCH_MINUTES))
+    # 4 shades of gray or black and white; the header tells the device which it got
+    use_gray = (gray if gray is not None else user_cfg.get("grayscale", "0")) == "1"
+    headers["X-Gray-Levels"] = "4" if use_gray else "2"
 
     selected_blank = blank if blank is not None else user_cfg.get("blank", DEFAULT_BLANK)
 
@@ -361,6 +454,7 @@ async def get_clock(
         battery_display=selected_batt_display,
         battery_position=selected_batt_position,
         now=now,
+        gray=use_gray,
     )
     return Response(
         content=img_bytes,

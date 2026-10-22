@@ -14,6 +14,7 @@ A Hebrew word-clock server for e-paper displays. It renders the current Israel t
 - **User accounts.** Each user registers on the website and gets their own saved clock settings.
 - **Settings page with live preview.** Font, city, calendar, clock style, sleep hours, battery display and blank screen, with a preview image that updates as you change them.
 - **One URL per device.** The device asks for `/clock.png?user=<name>` and the server applies that user's saved settings, so the look of the clock is changed from the website, not on the device.
+- **Several devices per user.** Each device reports its own ID; the settings page lists them with name, firmware, battery and last report, and any device can have its own settings.
 - **Four clock languages.** Hebrew, English, French and Spanish, each written the way people say the time ("Quarter To Eight", "Huit Heures Moins Le Quart", "Las Ocho Menos Cuarto"). In English, French and Spanish every word on the display starts with a capital letter.
 - **Settings page in Hebrew or English,** switched with the flags at the top.
 - **Clock style.** Analog face, digital `HH:mm`, or no clock (larger text only).
@@ -74,9 +75,16 @@ Log in at the server's home page to reach the settings page.
 | Sleep Mode | off / on, with start and end time | When on, the night image is shown between the two times (Israel time, 24-hour `HH:MM`; the range may cross midnight). The same start and end time means all day. |
 | Show Battery | none / icon / percentage / both, left or right | Drawn in a top corner. Appears only when the device reports its battery. |
 | Battery Save | 1–15 minutes | How often the device connects. With N above 1 it downloads the images for the next N minutes at once and shows them one per minute, so it uses Wi-Fi N times less. Settings, weather and battery level then update only every N minutes. |
+| Screen shades | black and white / 4 shades of gray | Gray smooths the edges of letters. It needs firmware that drives the panel in gray mode; older firmware shows the gray image in black and white. |
 | Blank screen | off / on | On returns an all-white image. |
 
-The preview next to the form shows your choices immediately. The device only changes after you press **Save**.
+The preview next to the form shows your choices immediately. The device only changes after you press **Save**. On a phone the preview sits at the top of the page and stays in view while you scroll through the settings.
+
+### Several devices
+
+With a single device the settings page looks as before: there is no device list, and the device always uses the shared settings. Once a second device connects, devices whose firmware sends a device ID (see `device` under [Image endpoint](#image-endpoint)) appear under **My devices** on the settings page, each with its ID, firmware version, battery level and last report. You can give each one a name ("Kitchen") or remove it from the list; a removed device that connects again reappears with the shared settings.
+
+By default every device of a user draws with the same settings. To give one device its own, pick it under **Settings for**, tick **Separate settings for this device**, change what you want and save. Untick the box to make it follow the shared settings again. A user can have up to 20 devices; when a new one connects beyond that, the one seen longest ago is dropped from the list. A device that is set up for a different user moves to that user and starts with the shared settings.
 
 The page also shows the **Server URL**. Enter that address and your user name in the device's setup portal.
 
@@ -110,6 +118,8 @@ For battery save mode, a device can ask for a specific minute instead of the cur
 | Parameter | Values | Meaning |
 |-----------|--------|---------|
 | `at` | Unix time in seconds | Render the clock for the minute containing this moment. Must be within 10 minutes before and 30 minutes after the server's time. |
+| `gray` | `0`, `1` | `1` returns 4 shades of gray (a 2-bit PNG with levels 0, 85, 170, 255) so text edges are smoothed; `0` returns black and white. Defaults to the user's **Screen shades** setting. Every image response carries `X-Gray-Levels: 4` or `2`. |
+| `device` | 4–40 letters, digits, `-` or `_`, e.g. the chip's MAC address `7c9ebd4a12f0` | Identifies the device (case-insensitive). With `user`, the server records the device's firmware, battery and last report, and uses the device's own settings if it has them. |
 
 Every image response carries `X-Batch-Minutes: <N>`, the user's battery save setting, so the device knows how many minutes to fetch per connection.
 
@@ -135,7 +145,7 @@ A device can report its firmware version with `fw=<version>` (e.g. `fw=1.4.0`) o
 | `X-Firmware-Sha256` | SHA-256 of the file, as hex. |
 | `X-Firmware-Signature` | Base64 of the release's ECDSA P-256 signature of the file. |
 
-The version each user's device last reported, and the latest available release, are shown on that user's settings page.
+The latest available release is shown on the settings page, and each device in **My devices** shows its own version, marked when an update is waiting. For devices that don't send a `device` ID, the page shows the version last reported by any of the user's devices.
 
 Each release must be tagged `v<major>.<minor>.<patch>` and have two assets: `firmware.bin` and `firmware.bin.sig` (the DER signature). The server downloads both into `DATA_DIR/firmware/` the first time a device needs them. The device checks the signature against the public key built into it, so the server never holds the signing key and cannot make a device accept firmware that was not signed with it.
 
