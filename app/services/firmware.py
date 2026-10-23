@@ -15,6 +15,7 @@ import base64
 import datetime
 import functools
 import hashlib
+import json
 import re
 
 import httpx
@@ -25,6 +26,11 @@ from app.core.config import settings
 CHECK_INTERVAL_SECONDS = 3600
 FAIL_BACKOFF_SECONDS = 600
 BIN_ASSET, SIG_ASSET = "firmware.bin", "firmware.bin.sig"
+# Web installer (releases from v1.0.5 on): a full flash image for new devices,
+# plus the install page and manifest from the firmware repo's install/ folder.
+# OTA never uses the full image.
+FULL_ASSET = "firmware-full.bin"
+_RAW_URL = "https://raw.githubusercontent.com/{repo}/{tag}/install/{name}"
 MAX_FIRMWARE_BYTES = 8 * 1024 * 1024
 
 _VERSION = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
@@ -64,8 +70,10 @@ async def _fetch_latest_release(client: httpx.AsyncClient) -> dict | None:
         return None
     return {
         "version": ".".join(map(str, version)),
+        "tag": data["tag_name"],
         "bin_url": assets[BIN_ASSET],
         "sig_url": assets[SIG_ASSET],
+        "full_url": assets.get(FULL_ASSET),
     }
 
 
@@ -133,6 +141,46 @@ def update_headers_for(version: str) -> dict[str, str]:
         "X-Firmware-Sha256": hashlib.sha256(firmware).hexdigest(),
         "X-Firmware-Signature": base64.b64encode(signature).decode(),
     }
+
+
+async def installer_files(client: httpx.AsyncClient) -> dict | None:
+    """Files of the web installer for the latest release, cached in DATA_DIR/firmware.
+
+    Returns {'version', 'page', 'manifest', 'full'} (paths), or None when the
+    latest release has no full image or the files could not be fetched.
+    """
+    release = await latest_release(client)
+    if not release or not release.get("full_url") or not settings.firmware_repo:
+        return None
+    folder = firmware_dir()
+    version = release["version"]
+    paths = {
+        "version": version,
+        "page": folder / f"{version}-install.html",
+        "manifest": folder / f"{version}-manifest.json",
+        "full": folder / f"{version}-full.bin",
+    }
+    if all(paths[k].exists() for k in ("page", "manifest", "full")):
+        return paths
+    async with _lock:
+        if all(paths[k].exists() for k in ("page", "manifest", "full")):
+            return paths
+        try:
+            raw = {name: _RAW_URL.format(repo=settings.firmware_repo, tag=release["tag"], name=name)
+                   for name in ("index.html", "manifest.json")}
+            page = await _download(client, raw["index.html"])
+            manifest = json.loads(await _download(client, raw["manifest.json"]))
+            full = await _download(client, release["full_url"])
+        except Exception as exc:
+            logger.warning("firmware: installer files for {} failed: {}", version, exc)
+            return None
+        manifest["version"] = version
+        folder.mkdir(parents=True, exist_ok=True)
+        paths["full"].write_bytes(full)
+        paths["manifest"].write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        paths["page"].write_bytes(page)  # last: the page appears only when everything is there
+        logger.info("firmware: installer cached for {} ({} bytes)", version, len(full))
+        return paths
 
 
 async def check_update(device_version: str | None, client: httpx.AsyncClient) -> dict[str, str]:

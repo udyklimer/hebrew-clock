@@ -149,6 +149,18 @@ A device can report its firmware version with `fw=<version>` (e.g. `fw=1.4.0`) o
 
 The latest available release is shown on the settings page, and each device in **My devices** shows its own version, marked when an update is waiting. For devices that don't send a `device` ID, the page shows the version last reported by any of the user's devices.
 
+### Installing on a new device (web installer)
+
+`https://<server>/install` installs the firmware on a brand-new device from Chrome or Edge on a computer, over USB, with nothing to install (it uses [ESP Web Tools](https://esphome.github.io/esp-web-tools/)). The server serves three files for the latest firmware release:
+
+| Path | Content |
+|------|---------|
+| `/install` | `install/index.html` from the firmware repository, at the release's tag, unchanged |
+| `/install/manifest.json` | `install/manifest.json` from the same tag, with `version` set to the release's version |
+| `/install/firmware-full.bin` | the release's `firmware-full.bin` asset (bootloader, partition table and app in one image), unchanged |
+
+They are downloaded once per release into `DATA_DIR/firmware/` and must come from this server, because browsers can't fetch GitHub release files from another site. Only releases from `v1.0.5` on have `firmware-full.bin`; until one exists, `/install` says the installer isn't available. Over-the-air updates keep using `firmware.bin` and never the full image. Web Serial needs https, so the page only works through the https address. The login and settings pages link to it.
+
 Each release must be tagged `v<major>.<minor>.<patch>` and have two assets: `firmware.bin` and `firmware.bin.sig` (the DER signature). The server downloads both into `DATA_DIR/firmware/` the first time a device needs them. The device checks the signature against the public key built into it, so the server never holds the signing key and cannot make a device accept firmware that was not signed with it.
 
 Other routes: `/health`, `/robots.txt`, `/sitemap.xml`, and interactive API docs at `/api/docs`.

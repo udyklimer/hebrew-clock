@@ -470,6 +470,47 @@ async def get_clock(
     )
 
 
+_INSTALLER_UNAVAILABLE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install Hebrew Clock</title></head>
+<body style="font: 17px/1.5 system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 16px;">
+<h1>Install Hebrew Clock</h1>
+<p>The installer isn't available right now: there is no firmware release with an installable image yet,
+or it could not be downloaded. Please try again later.</p>
+<p dir="rtl" lang="he">ההתקנה אינה זמינה כרגע: עדיין אין גרסת קושחה שאפשר להתקין מכאן, או שלא ניתן היה להוריד אותה. נסו שוב מאוחר יותר.</p>
+</body></html>"""
+
+
+@router.get("/install", include_in_schema=False)
+@router.get("/install/", include_in_schema=False)
+async def install_page(request: Request) -> Response:
+    """Web installer for new devices (the page from the firmware repo's install/ folder)."""
+    files = await firmware_svc.installer_files(request.app.state.http_client)
+    if not files:
+        return HTMLResponse(_INSTALLER_UNAVAILABLE, status_code=503)
+    return FileResponse(files["page"], media_type="text/html; charset=utf-8",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/install/manifest.json", include_in_schema=False)
+async def install_manifest(request: Request) -> Response:
+    files = await firmware_svc.installer_files(request.app.state.http_client)
+    if not files:
+        return PlainTextResponse("Not available", status_code=503)
+    return FileResponse(files["manifest"], media_type="application/json",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/install/firmware-full.bin", include_in_schema=False)
+async def install_firmware(request: Request) -> Response:
+    files = await firmware_svc.installer_files(request.app.state.http_client)
+    if not files:
+        return PlainTextResponse("Not available", status_code=503)
+    return FileResponse(files["full"], media_type="application/octet-stream",
+                        headers={"Cache-Control": "no-cache"})
+
+
 @router.get("/firmware/{version}.bin", include_in_schema=False)
 async def get_firmware(version: str) -> Response:
     """Serves a firmware image cached from the firmware repo's releases."""
