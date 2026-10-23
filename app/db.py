@@ -47,7 +47,8 @@ def init_db():
                 battery_position TEXT DEFAULT 'left',
                 batch_minutes INTEGER DEFAULT 1,
                 language TEXT DEFAULT 'he',
-                grayscale TEXT DEFAULT '0'
+                grayscale TEXT DEFAULT '0',
+                bottom_bar TEXT DEFAULT '1'
             )
         """
         )
@@ -72,7 +73,7 @@ def init_db():
         for column, default in (
             ("sleep_start", "22:00"), ("sleep_end", "06:00"),
             ("battery_display", "none"), ("battery_position", "left"),
-            ("language", "he"), ("grayscale", "0"),
+            ("language", "he"), ("grayscale", "0"), ("bottom_bar", "1"),
         ):
             try:
                 conn.execute(
@@ -162,7 +163,7 @@ def get_user_settings(username: str) -> dict:
     with get_db() as conn:
         row = conn.execute(
             "SELECT font, location, calendar, sleeptime, blank, clock_style, sleep_start, sleep_end, "
-            "battery_display, battery_position, batch_minutes, language, grayscale "
+            "battery_display, battery_position, batch_minutes, language, grayscale, bottom_bar "
             "FROM user_settings WHERE username = ?",
             (username.lower(),),
         ).fetchone()
@@ -181,6 +182,7 @@ def get_user_settings(username: str) -> dict:
                 "batch_minutes": int(row["batch_minutes"] or 1),
                 "language": row["language"] or "he",
                 "grayscale": row["grayscale"] or "0",
+                "bottom_bar": row["bottom_bar"] or "1",
             }
         return {
             "font": "DavidLibre-Bold",
@@ -196,6 +198,7 @@ def get_user_settings(username: str) -> dict:
             "batch_minutes": 1,
             "language": "he",
             "grayscale": "0",
+            "bottom_bar": "1",
         }
 
 
@@ -214,6 +217,7 @@ def update_user_settings(
     batch_minutes: int = 1,
     language: str = "he",
     grayscale: str = "0",
+    bottom_bar: str = "1",
 ):
     init_db()
     with get_db() as conn:
@@ -221,8 +225,8 @@ def update_user_settings(
             """
             INSERT INTO user_settings
                 (username, font, location, calendar, sleeptime, blank, clock_style, sleep_start, sleep_end,
-                 battery_display, battery_position, batch_minutes, language, grayscale)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 battery_display, battery_position, batch_minutes, language, grayscale, bottom_bar)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(username) DO UPDATE SET
                 font=excluded.font,
                 location=excluded.location,
@@ -236,11 +240,12 @@ def update_user_settings(
                 battery_position=excluded.battery_position,
                 batch_minutes=excluded.batch_minutes,
                 language=excluded.language,
-                grayscale=excluded.grayscale
+                grayscale=excluded.grayscale,
+                bottom_bar=excluded.bottom_bar
             """,
             (username.lower(), font, location, calendar, sleeptime, blank, clock_style,
              sleep_start, sleep_end, battery_display, battery_position, batch_minutes,
-             language, grayscale),
+             language, grayscale, bottom_bar),
         )
 
 
@@ -319,6 +324,11 @@ def record_device(username: str, device_id: str, fw: str | None,
         elif row["username"] != username:
             conn.execute("UPDATE devices SET username = ?, name = NULL, settings = NULL WHERE device_id = ?",
                          (username, device_id))
+            # The old user's "last reported version" may have come from this
+            # device; forget it so their page doesn't show a device they no
+            # longer have (a device of theirs without an ID refills it)
+            conn.execute("UPDATE user_settings SET device_fw = NULL, device_seen = NULL WHERE username = ?",
+                         (row["username"],))
         conn.execute(
             "UPDATE devices SET fw = COALESCE(?, fw), last_seen = ?, battery_mv = COALESCE(?, battery_mv), "
             "charging = ? WHERE device_id = ?",

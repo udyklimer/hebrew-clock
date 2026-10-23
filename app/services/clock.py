@@ -565,6 +565,7 @@ def generate_clock_image(
     battery_position: str   = DEFAULT_BATTERY_POSITION,
     now: datetime.datetime | None = None,
     gray: bool = False,
+    bottom_bar: bool = True,
 ) -> bytes:
     """Generates the clock screen image (gray: 4 shades instead of black and white).
 
@@ -603,9 +604,10 @@ def generate_clock_image(
     bar_width = bar_right - bar_left
     div_x     = bar_left + bar_width // 3
     div_x2    = bar_left + 2 * bar_width // 3
-    draw.line([(bar_left, sep_y), (bar_right, sep_y)], fill=0, width=1)
-    draw.line([(div_x,  H - 92), (div_x,  H - 15)], fill=0, width=1)
-    draw.line([(div_x2, H - 92), (div_x2, H - 15)], fill=0, width=1)
+    if bottom_bar:
+        draw.line([(bar_left, sep_y), (bar_right, sep_y)], fill=0, width=1)
+        draw.line([(div_x,  H - 92), (div_x,  H - 15)], fill=0, width=1)
+        draw.line([(div_x2, H - 92), (div_x2, H - 15)], fill=0, width=1)
 
     def draw_block(lines: list[tuple[str, int]], box: tuple[int, int, int, int],
                    gap: int = 6) -> None:
@@ -620,7 +622,8 @@ def generate_clock_image(
 
     # ── Clock and Hebrew time ──
     text_left, text_right = 30, W - 30
-    text_bottom = sep_y - 8
+    # Without the bottom row the time text may use the space down to the frame
+    text_bottom = sep_y - 8 if bottom_bar else H - PAD2 - 10
     if clock_style == "none":
         # No clock: larger text, centred in the whole area above the bottom bar
         # (starting below the battery indicator when there is one)
@@ -637,6 +640,8 @@ def generate_clock_image(
                    (text_left, clock_cy + clock_r + 8, text_right, text_bottom), gap=12)
 
     # ── Bottom bar ──
+    if not bottom_bar:
+        return _png_bytes(img, gray)
     cell_top, cell_bottom = sep_y + 5, H - PAD2 - 5
 
     day_name  = text(lang.day_name(now.weekday()))

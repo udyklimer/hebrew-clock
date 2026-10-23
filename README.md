@@ -75,6 +75,7 @@ Log in at the server's home page to reach the settings page.
 | Sleep Mode | off / on, with start and end time | When on, the night image is shown between the two times (Israel time, 24-hour `HH:MM`; the range may cross midnight). The same start and end time means all day. |
 | Show Battery | none / icon / percentage / both, left or right | Drawn in a top corner. Appears only when the device reports its battery. |
 | Battery Save | 1–15 minutes | How often the device connects. With N above 1 it downloads the images for the next N minutes at once and shows them one per minute, so it uses Wi-Fi N times less. Settings, weather and battery level then update only every N minutes. |
+| Bottom row | show / hide | The row with the date, time of day and weather. Hidden, the time text uses the freed space, and the weather and Hebrew date are not fetched. |
 | Screen shades | black and white / 4 shades of gray | Gray smooths the edges of letters. It needs firmware that drives the panel in gray mode; older firmware shows the gray image in black and white. |
 | Blank screen | off / on | On returns an all-white image. |
 
@@ -118,6 +119,7 @@ For battery save mode, a device can ask for a specific minute instead of the cur
 | Parameter | Values | Meaning |
 |-----------|--------|---------|
 | `at` | Unix time in seconds | Render the clock for the minute containing this moment. Must be within 10 minutes before and 30 minutes after the server's time. |
+| `bottom_bar` | `0`, `1` | `0` hides the bottom row (date, time of day, weather). Defaults to the user's **Bottom row** setting. |
 | `gray` | `0`, `1` | `1` returns 4 shades of gray (a 2-bit PNG with levels 0, 85, 170, 255) so text edges are smoothed; `0` returns black and white. Defaults to the user's **Screen shades** setting. Every image response carries `X-Gray-Levels: 4` or `2`. |
 | `device` | 4–40 letters, digits, `-` or `_`, e.g. the chip's MAC address `7c9ebd4a12f0` | Identifies the device (case-insensitive). With `user`, the server records the device's firmware, battery and last report, and uses the device's own settings if it has them. |
 

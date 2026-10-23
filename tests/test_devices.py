@@ -57,6 +57,18 @@ def test_device_moving_to_another_user_starts_fresh(client):
     assert device["name"] is None and device["settings"] is None
 
 
+def test_moved_device_leaves_no_version_behind(client):
+    _register(client, "oldhome")
+    client.get("/clock.png?user=oldhome&device=wanderer&fw=1.0.4")
+    assert db.get_device_firmware("oldhome")[0] == "1.0.4"
+    _register(client, "newhome")
+    client.get("/clock.png?user=newhome&device=wanderer&fw=1.0.4")
+    assert db.get_device_firmware("oldhome") == (None, None)
+    client.cookies.clear()
+    client.post("/login", data={"username": "oldhome", "password": "correct-horse"})
+    assert "המכשיר עדיין לא דיווח" in client.get("/config").text   # "hasn't reported yet"
+
+
 def test_device_limit_per_user(client):
     _register(client, "manydev")
     for i in range(db.MAX_DEVICES_PER_USER + 3):

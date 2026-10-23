@@ -215,6 +215,7 @@ async def config_page(
             "selected_blank": user_settings.get("blank", DEFAULT_BLANK) == "1",
             "selected_clock_style": user_settings.get("clock_style", clock.DEFAULT_CLOCK_STYLE),
             "selected_grayscale": user_settings.get("grayscale", "0") == "1",
+            "selected_bottom_bar": user_settings.get("bottom_bar", "1") == "1",
             "saved": request.query_params.get("saved") == "1",
             "device_fw": device_fw,
             "device_seen": device_seen,
@@ -241,6 +242,7 @@ async def save_config(
     clock_style: str = Form(clock.DEFAULT_CLOCK_STYLE),
     language: str = Form(languages.DEFAULT_LANGUAGE),
     grayscale: str = Form("0"),
+    bottom_bar: str = Form("1"),
     device: Optional[str] = Form(None),
     own_settings: Optional[str] = Form(None),
     user_session: Optional[str] = Cookie(None, alias=SESSION_COOKIE)
@@ -278,6 +280,7 @@ async def save_config(
         "batch_minutes": min(clock.MAX_BATCH_MINUTES, max(clock.MIN_BATCH_MINUTES, batch_minutes)),
         "language": language,
         "grayscale": "1" if grayscale == "1" else "0",
+        "bottom_bar": "0" if bottom_bar == "0" else "1",
     }
 
     # One device: its own settings, or back to the user's
@@ -357,6 +360,7 @@ async def get_clock(
     language: Optional[str] = Query(None, description="Clock language: he, en, fr or es"),
     device: Optional[str] = Query(None, description="Device ID, e.g. the chip's MAC address"),
     gray: Optional[str] = Query(None, description="1 for 4 shades of gray, 0 for black and white"),
+    bottom_bar: Optional[str] = Query(None, description="0 hides the bottom row (date, period, weather)"),
 ) -> Response:
     # The minute to render: a requested one (battery save mode fetches several
     # minutes ahead), or now plus the display lag
@@ -434,10 +438,12 @@ async def get_clock(
     if selected_style not in clock.VALID_CLOCK_STYLES:
         selected_style = clock.DEFAULT_CLOCK_STYLE
 
-    w = await weather_svc.get_weather(selected_loc, request.app.state.http_client)
+    # The bottom row shows the date and weather; without it neither is fetched
+    show_bottom = (bottom_bar if bottom_bar is not None else user_cfg.get("bottom_bar", "1")) != "0"
+    w = await weather_svc.get_weather(selected_loc, request.app.state.http_client) if show_bottom else None
 
     jdate = None
-    if selected_cal == "jewish":
+    if selected_cal == "jewish" and show_bottom:
         today = now.date()
         jdate = await jewish_cal_svc.get_jewish_date(today, request.app.state.http_client)
 
@@ -455,6 +461,7 @@ async def get_clock(
         battery_position=selected_batt_position,
         now=now,
         gray=use_gray,
+        bottom_bar=show_bottom,
     )
     return Response(
         content=img_bytes,

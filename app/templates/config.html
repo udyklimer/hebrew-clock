@@ -215,6 +215,14 @@
         </div>
 
         <div class="form-group">
+          <label for="bottom_bar">{{ t.bottom_bar }}</label>
+          <select name="bottom_bar" id="bottom_bar">
+            <option value="1" {% if selected_bottom_bar %}selected{% endif %}>{{ t.bottom_show }}</option>
+            <option value="0" {% if not selected_bottom_bar %}selected{% endif %}>{{ t.bottom_hide }}</option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label for="grayscale">{{ t.grayscale }}</label>
           <select name="grayscale" id="grayscale">
             <option value="0" {% if not selected_grayscale %}selected{% endif %}>{{ t.gray_off }}</option>
@@ -329,6 +337,7 @@
         battery: '75',  // sample value; the real one comes from the device
         blank:     document.getElementById('blank').checked ? '1' : '0',
         gray:      document.getElementById('grayscale').value,
+        bottom_bar: document.getElementById('bottom_bar').value,
       });
       return '/clock.png?' + p.toString();
     }
@@ -359,7 +368,7 @@
       debounceTimer = setTimeout(updatePreview, 500);
     }
 
-    ['font', 'calendar', 'clock_style', 'sleeptime', 'blank', 'battery_display', 'battery_position', 'grayscale'].forEach(id =>
+    ['font', 'calendar', 'clock_style', 'sleeptime', 'blank', 'battery_display', 'battery_position', 'grayscale', 'bottom_bar'].forEach(id =>
       document.getElementById(id).addEventListener('change', updatePreview)
     );
     ['location', 'sleep_start', 'sleep_end'].forEach(id =>
